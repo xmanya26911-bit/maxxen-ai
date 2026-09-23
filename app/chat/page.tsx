@@ -10,10 +10,7 @@ const nav = ["Home", "Chats", "Projects", "Artifacts", "Agents", "Plugins"];
 const navIcons = ["home", "chat", "grid", "box", "bolt", "grid"];
 const tools = ["Chat", "Build", "Code", "Design", "Research", "Deploy"];
 const suggestions = ["Build a landing page", "Create a dashboard", "Design an app", "Connect an API"];
-const MODELS = [
-  { id: "openai", glyph: "◈", label: "GPT-4o-mini", sub: "ChatGPT · BYOK", model: "gpt-4o-mini" },
-  { id: "gemini", glyph: "✶", label: "Gemini Flash", sub: "Gemini · BYOK", model: "gemini-1.5-flash" },
-];
+const NAV_HREF: Record<string, string> = { Home: "/", Chats: "/chat", Projects: "/projects", Artifacts: "/artifacts", Agents: "/agents", Plugins: "/plugins" };
 
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
@@ -77,6 +74,17 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   );
 }
 
+const menuField = {
+  width: "100%",
+  background: "rgba(0,0,0,.4)",
+  border: "1px solid rgba(255,255,255,.12)",
+  borderRadius: 6,
+  padding: "8px",
+  color: "#eee",
+  fontSize: 11,
+  outline: "none",
+} as const;
+
 export default function ChatPage() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState("");
@@ -94,9 +102,10 @@ export default function ChatPage() {
   const [recent, setRecent] = useState<SavedChat[]>([]);
   const [chatId, setChatId] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState("gpt-4o-mini");
-  const [customModel, setCustomModel] = useState("");
+  const [model, setModel] = useState("");
+  const [fBase, setFBase] = useState("");
+  const [fKey, setFKey] = useState("");
+  const [fModel, setFModel] = useState("");
   const modelWrapRef = useRef<HTMLDivElement>(null);
 
   const cleanChats = (v: unknown): SavedChat[] => {
@@ -116,8 +125,6 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!chatId) setChatId(String(Date.now()));
-    const savedCustom = ls("maxxen_custom_model");
-    if (savedCustom) setCustomModel(savedCustom);
     const onDown = (e: MouseEvent) => {
       if (modelWrapRef.current && !modelWrapRef.current.contains(e.target as Node)) setModelOpen(false);
     };
@@ -145,11 +152,23 @@ export default function ChatPage() {
       }
     })();
     setEmail(ls("maxxen_otp_email"));
-    setProvider(ls("maxxen_provider") || "openai");
-    const m = ls("maxxen_model");
-    setModel(m || (ls("maxxen_provider") === "gemini" ? "gemini-1.5-flash" : "gpt-4o-mini"));
+    const savedModel = ls("maxxen_model");
+    setModel(savedModel);
+    setFBase(ls("maxxen_baseurl"));
+    setFKey(ls("maxxen_apikey"));
+    setFModel(savedModel);
     try {
-      setRecent(cleanChats(JSON.parse(ls("maxxen_chats") || "[]")));
+      const all = cleanChats(JSON.parse(ls("maxxen_chats") || "[]"));
+      setRecent(all);
+      const openId = ls("maxxen_open_chat");
+      if (openId) {
+        ls("maxxen_open_chat", "__DEL__");
+        const found = all.find((c) => c.id === openId);
+        if (found) {
+          setMessages(found.messages);
+          setChatId(found.id);
+        }
+      }
     } catch {
       setRecent([]);
     }
@@ -166,24 +185,31 @@ export default function ChatPage() {
     });
   };
 
-  const activeKey = () => (provider === "gemini" ? ls("maxxen_gemini_key") : ls("maxxen_openai_key"));
-
-  const applyCustomModel = () => {
-    const v = customModel.trim();
-    if (!v) return;
-    setModel(v);
-    ls("maxxen_model", v);
-    ls("maxxen_custom_model", v);
+  const applyEndpoint = () => {
+    if (!fKey.trim()) {
+      setStatus("Paste your API key first.");
+      return;
+    }
+    if (!fModel.trim()) {
+      setStatus("Enter the Model ID your provider gave you.");
+      return;
+    }
+    ls("maxxen_baseurl", fBase.trim());
+    ls("maxxen_apikey", fKey.trim());
+    ls("maxxen_model", fModel.trim());
+    setModel(fModel.trim());
     setModelOpen(false);
-    setStatus(`Model set to ${v} — make sure your key supports it.`);
+    setStatus(`Endpoint saved — ${fModel.trim()}. Keys stay in your browser.`);
   };
 
   const send = async (text?: string) => {
     const raw = (text ?? prompt).trim();
     if (!raw || sending) return;
-    const key = activeKey();
-    if (!key) {
-      setStatus("Add your Gemini or OpenAI key on the Settings page first (BYOK) — then chat here.");
+    const key = ls("maxxen_apikey");
+    const base = ls("maxxen_baseurl");
+    const mid = ls("maxxen_model");
+    if (!key || !mid) {
+      setStatus("Set your Base URL + API key + Model ID in the model menu (top bar) or /settings first.");
       return;
     }
     let full = raw;
@@ -200,10 +226,9 @@ export default function ChatPage() {
         method: "POST",
         body: JSON.stringify({
           messages: next.map((m) => ({ role: m.role, content: m.content })),
-          provider,
           apiKey: key,
-          baseURL: ls("maxxen_baseurl"),
-          model: model || undefined,
+          baseURL: base,
+          model: mid,
         }),
       });
       const j = await r.json();
@@ -271,8 +296,7 @@ export default function ChatPage() {
   };
 
   const initials = (email || "MX").slice(0, 2).toUpperCase();
-  const currentModel = MODELS.find((m) => m.id === provider) || MODELS[0];
-  const activeModelLabel = customModel || currentModel.label;
+  const activeModelLabel = model || "Set model";
   const latestHtml = [...messages].reverse().find((m) => m.html)?.html;
   const hasMessages = messages.length > 0;
 
@@ -307,19 +331,12 @@ export default function ChatPage() {
           <Icon name="search" /> Search <kbd>⌘ /</kbd>
         </button>
         <nav>
-          {nav.map((item, i) =>
-            item === "Home" ? (
-              <a key={item} href="/" className="nav-item" style={{ textDecoration: "none" }}>
-                <Icon name={navIcons[i]} />
-                {item}
-              </a>
-            ) : (
-              <button key={item} onClick={() => setActiveNav(item)} className={`nav-item ${activeNav === item ? "active" : ""}`}>
-                <Icon name={navIcons[i]} />
-                {item}
-              </button>
-            )
-          )}
+          {["Home", "Chats", "Projects", "Artifacts", "Agents", "Plugins"].map((item, i) => (
+            <a key={item} href={NAV_HREF[item]} className={`nav-item ${item === "Chats" ? "active" : ""}`} style={{ textDecoration: "none" }}>
+              <Icon name={navIcons[i]} />
+              {item}
+            </a>
+          ))}
         </nav>
         <section className="recent">
           <p>Recent</p>
@@ -356,42 +373,30 @@ export default function ChatPage() {
                 <span className="model-glyph">✦</span> {activeModelLabel} <Icon name="chevron" size={14} />
               </button>
               {modelOpen && (
-                <div className="model-menu" role="menu">
-                  <small>SELECT MODEL (BYOK)</small>
-                  {MODELS.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        setProvider(m.id);
-                        setModel(m.model);
-                        setCustomModel("");
-                        ls("maxxen_custom_model", "__DEL__");
-                        ls("maxxen_provider", m.id);
-                        ls("maxxen_model", m.model);
-                        setModelOpen(false);
-                      }}
-                    >
-                      {m.glyph} {m.label} <b>{provider === m.id && !customModel ? "Current" : m.sub}</b>
-                    </button>
-                  ))}
-                  <small>CUSTOM MODEL</small>
-                  <div style={{ display: "flex", gap: 6, padding: "2px 7px 7px" }}>
+                <div className="model-menu" role="menu" style={{ width: 252 }}>
+                  <small>YOUR ENDPOINT (BYOK)</small>
+                  <div style={{ display: "grid", gap: 6, padding: "2px 7px 9px" }}>
+                    <input value={fBase} onChange={(e) => setFBase(e.target.value)} placeholder="Base URL — https://api.openai.com/v1" aria-label="Base URL" style={menuField} />
+                    <input value={fKey} onChange={(e) => setFKey(e.target.value)} placeholder="API key" aria-label="API key" type="password" autoComplete="off" style={menuField} />
                     <input
-                      value={customModel}
-                      onChange={(e) => setCustomModel(e.target.value)}
+                      value={fModel}
+                      onChange={(e) => setFModel(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
-                          applyCustomModel();
+                          applyEndpoint();
                         }
                       }}
-                      placeholder={provider === "gemini" ? "gemini-2.0-flash" : "gpt-4o / o3-mini…"}
-                      aria-label="Custom model name"
-                      style={{ flex: 1, minWidth: 0, background: "rgba(0,0,0,.4)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 6, padding: "8px", color: "#eee", fontSize: 11, outline: "none" }}
+                      placeholder="Model ID — e.g. gpt-4o-mini"
+                      aria-label="Model ID"
+                      style={menuField}
                     />
-                    <button onClick={applyCustomModel} style={{ flex: "0 0 auto" }}>
-                      Use <b>→</b>
+                    <button onClick={applyEndpoint} style={{ flex: "0 0 auto" }}>
+                      Use endpoint <b>→</b>
                     </button>
+                    <span style={{ fontSize: 8, color: "#6e6e75", padding: "0 2px", lineHeight: 1.5 }}>
+                      OpenAI · Gemini (OpenAI-compatible URL) · OpenRouter · Groq · DeepSeek · Ollama — any base URL + key + model ID.
+                    </span>
                   </div>
                 </div>
               )}
