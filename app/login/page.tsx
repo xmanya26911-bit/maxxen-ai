@@ -25,7 +25,6 @@ export default function Login() {
   const googleId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
   async function googleLogin(credential: string) {
-    if (!credential || busy) return;
     setBusy(true);
     setMsg("Verifying with Google…");
     try {
@@ -60,7 +59,7 @@ export default function Login() {
       g.accounts.id.renderButton(googleBtn.current, { theme: "filled_black", size: "large", width: 320, text: "continue_with" });
       return true;
     };
-    if (!document.querySelector("script[data-maxxen-gis]")) {
+    if (!document.querySelector('script[data-maxxen-gis]')) {
       const s = document.createElement("script");
       s.src = "https://accounts.google.com/gsi/client";
       s.async = true;
@@ -88,6 +87,7 @@ export default function Login() {
         if (r.ok) router.replace("/chat");
         else ls("maxxen_session", "__DEL__");
       } catch {
+        /* offline — leave session for retry */
       }
     })();
     const saved = ls("maxxen_otp_email");
@@ -129,10 +129,10 @@ export default function Login() {
         ls("maxxen_otp_ticket", "__DEL__");
         ls("maxxen_otp_email", "__DEL__");
         ls("maxxen_session", j.session);
-        setMsg("Signed in — restoring your synced setup…");
         try {
           await pullVault(j.session);
         } catch {
+          /* offline — cached values still work */
         }
         router.push("/chat");
       } else setMsg(j.error || "Incorrect code");
