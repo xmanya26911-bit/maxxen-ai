@@ -67,7 +67,7 @@ export default function Home() {
     setAuthMsg("Sending...");
     const r = await fetch("/api/auth/send-otp", { method: "POST", body: JSON.stringify({ email }) });
     const j = await r.json();
-    if (j.ok) { setOtpSent(true); setAuthMsg("6-digit code sent from maxxen.app@outlook.com"); }
+    if (j.ok) { setOtpSent(true); setAuthMsg("6-digit code sent from xmanya26911@gmail.com"); }
     else setAuthMsg(j.error || "Failed");
   }
   async function verifyOtp() {
@@ -113,7 +113,7 @@ export default function Home() {
             </>
           )}
           {authMsg && <p className="text-sm text-white/70 mt-3">{authMsg}</p>}
-          <p className="text-xs text-white/40 mt-4">Code from maxxen.app@outlook.com, expires in 10 min. Everything is BYOK + your GitHub.</p>
+          <p className="text-xs text-white/40 mt-4">Code from xmanya26911@gmail.com, expires in 10 min. Everything is BYOK + your GitHub.</p>
         </div>
       </main>
     );
