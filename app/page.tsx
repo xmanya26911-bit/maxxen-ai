@@ -38,6 +38,8 @@ export default function Home() {
 
   useEffect(() => {
     setSession(ls("maxxen_session"));
+    const savedEmail = ls("maxxen_otp_email");
+    if (savedEmail) { setEmail(savedEmail); setTicket(ls("maxxen_otp_ticket")); setOtpSent(true); }
     setProvider(ls("maxxen_provider") || "openai");
     setOpenaiKey(ls("maxxen_openai_key"));
     setGeminiKey(ls("maxxen_gemini_key"));
@@ -68,14 +70,14 @@ export default function Home() {
     setAuthMsg("Sending...");
     const r = await fetch("/api/auth/send-otp", { method: "POST", body: JSON.stringify({ email }) });
     const j = await r.json();
-    if (j.ok) { setOtpSent(true); setTicket(j.ticket || ""); setAuthMsg("6-digit code sent from xmanya26911@gmail.com"); }
+    if (j.ok) { setOtpSent(true); setTicket(j.ticket || ""); ls("maxxen_otp_ticket", j.ticket || ""); ls("maxxen_otp_email", email); setAuthMsg("6-digit code sent from xmanya26911@gmail.com"); }
     else setAuthMsg(j.error || "Failed");
   }
   async function verifyOtp() {
     setAuthMsg("Verifying...");
     const r = await fetch("/api/auth/verify-otp", { method: "POST", body: JSON.stringify({ email, code: otp, ticket }) });
     const j = await r.json();
-    if (j.ok) { ls("maxxen_session", j.session); setSession(j.session); setAuthMsg(""); }
+    if (j.ok) { ls("maxxen_otp_ticket", "__DEL__"); ls("maxxen_otp_email", "__DEL__"); ls("maxxen_session", j.session); setSession(j.session); setAuthMsg(""); }
     else setAuthMsg(j.error || "Incorrect code");
   }
   async function chat(sendText?: string) {
@@ -111,6 +113,7 @@ export default function Home() {
             <>
               <input className="input mt-3 text-center text-2xl tracking-[0.5em]" placeholder="000000" value={otp} onChange={e=>setOtp(e.target.value)} maxLength={6} />
               <button onClick={verifyOtp} className="btn-primary w-full mt-3 py-3">Verify and Login</button>
+              <button onClick={sendOtp} className="w-full mt-2 py-2 text-sm text-white/60 hover:text-white">Resend code (older codes stop working)</button>
             </>
           )}
           {authMsg && <p className="text-sm text-white/70 mt-3">{authMsg}</p>}
