@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CButton, CField, CPanel, CSelect, CStatus } from "@/components/ui";
+import { CButton, CField, CPanel, CStatus } from "@/components/ui";
 
-type Tab = "plugins" | "storage" | "hosting" | "settings";
+type Tab = "endpoint" | "plugins" | "storage" | "hosting";
 
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
@@ -16,11 +16,9 @@ const ls = (k: string, v?: string) => {
 export default function Settings() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<Tab>("settings");
-  const [provider, setProvider] = useState("openai");
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
+  const [tab, setTab] = useState<Tab>("endpoint");
   const [baseURL, setBaseURL] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [githubToken, setGithubToken] = useState("");
   const [vercelToken, setVercelToken] = useState("");
@@ -41,10 +39,8 @@ export default function Settings() {
         router.replace("/login");
         return;
       }
-      setProvider(ls("maxxen_provider") || "openai");
-      setOpenaiKey(ls("maxxen_openai_key"));
-      setGeminiKey(ls("maxxen_gemini_key"));
       setBaseURL(ls("maxxen_baseurl"));
+      setApiKey(ls("maxxen_apikey"));
       setModel(ls("maxxen_model"));
       setGithubToken(ls("maxxen_github_token"));
       setVercelToken(ls("maxxen_vercel_token"));
@@ -55,11 +51,9 @@ export default function Settings() {
   }, [router]);
 
   const saveSettings = () => {
-    ls("maxxen_provider", provider);
-    ls("maxxen_openai_key", openaiKey);
-    ls("maxxen_gemini_key", geminiKey);
-    ls("maxxen_baseurl", baseURL);
-    ls("maxxen_model", model);
+    ls("maxxen_baseurl", baseURL.trim());
+    ls("maxxen_apikey", apiKey.trim());
+    ls("maxxen_model", model.trim());
     ls("maxxen_github_token", githubToken);
     ls("maxxen_vercel_token", vercelToken);
     ls("maxxen_vercel_project", vercelProject);
@@ -93,25 +87,33 @@ export default function Settings() {
         <button onClick={() => { ls("maxxen_session", "__DEL__"); router.push("/login"); }} className="text-sm text-white/60 hover:text-white">Logout</button>
       </header>
       <nav className="flex gap-2 px-6 py-3 border-b border-white/10 overflow-x-auto" aria-label="Settings sections">
-        {(["plugins", "storage", "hosting", "settings"] as Tab[]).map((t) => (
+        {(["endpoint", "plugins", "storage", "hosting"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t} className="mx-tab" style={{ textTransform: "capitalize" }}>{t}</button>
         ))}
       </nav>
       <div className="max-w-5xl mx-auto p-6">
         <CStatus text={status} />
+        {tab === "endpoint" && (
+          <CPanel title="Your AI endpoint — works with every provider" sub="Base URL + API key + Model ID. Yours, stored only in this browser. OpenAI, Gemini (OpenAI-compatible URL), OpenRouter, Groq, DeepSeek, Ollama, anything.">
+            <CField placeholder="Base URL — e.g. https://api.openai.com/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} aria-label="Base URL" inputMode="url" />
+            <CField placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} aria-label="API key" type="password" autoComplete="off" />
+            <CField placeholder="Model ID — e.g. gpt-4o-mini" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model ID" />
+            <div><CButton onClick={saveSettings}>Save endpoint</CButton></div>
+          </CPanel>
+        )}
         {tab === "plugins" && (
-          <CPanel title="Your Composio — Your Plugins" sub="Paste YOUR Composio API key, then connect Gmail, GitHub, Notion, Slack, Vercel from YOUR dashboard.">
+          <CPanel title="Your Composio — Your Plugins" sub="Paste YOUR Composio API key, then connect Gmail, GitHub, Notion, Slack, Vercel from YOUR dashboard. Manage them on /plugins.">
             <CField placeholder="YOUR Composio API key" value={composioKey} onChange={(e) => setComposioKey(e.target.value)} aria-label="Composio API key" />
             <div className="flex gap-2">
               <CField placeholder="toolkit: gmail, github, notion..." value={toolkit} onChange={(e) => setToolkit(e.target.value)} aria-label="Toolkit name" />
               <CButton onClick={testComposio}>{checking ? "Checking…" : "Check"}</CButton>
             </div>
-            <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)" }} className="text-sm underline inline-block">Open YOUR Composio dashboard</a>
+            <a href="/plugins" style={{ color: "var(--mx-link)", fontSize: 13 }}>Open the plugin hub →</a>
             <div><CButton onClick={saveSettings}>Save</CButton></div>
           </CPanel>
         )}
         {tab === "storage" && (
-          <CPanel title="Your GitHub Storage (not mine)" sub="Paste YOUR GitHub token (repo scope). Maxxen uses maxxen-data in YOUR account.">
+          <CPanel title="Your GitHub Storage (not mine)" sub="Paste YOUR GitHub token (repo scope). Maxxen uses maxxen-data in YOUR account. Browse it on /projects.">
             <CField placeholder="ghp_... YOUR token" value={githubToken} onChange={(e) => setGithubToken(e.target.value)} aria-label="GitHub personal access token" />
             <div><CButton variant="ghost" onClick={saveSettings}>Save</CButton></div>
           </CPanel>
@@ -121,19 +123,6 @@ export default function Settings() {
             <CField placeholder="YOUR Vercel token" value={vercelToken} onChange={(e) => setVercelToken(e.target.value)} aria-label="Vercel token" />
             <CField placeholder="Project name (maxxen)" value={vercelProject} onChange={(e) => setVercelProject(e.target.value)} aria-label="Vercel project name" />
             <div><CButton onClick={saveSettings}>Save</CButton></div>
-          </CPanel>
-        )}
-        {tab === "settings" && (
-          <CPanel title="BYOK Settings — zero cost for owner" sub="Keys live only in YOUR browser. Chat in /chat.">
-            <CSelect value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="AI provider">
-              <option value="openai">ChatGPT / OpenAI</option>
-              <option value="gemini">Gemini</option>
-            </CSelect>
-            <CField placeholder="OpenAI key sk-... (YOUR browser only)" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)} aria-label="OpenAI API key" />
-            <CField placeholder="Gemini key AIza... (YOUR browser only)" value={geminiKey} onChange={(e) => setGeminiKey(e.target.value)} aria-label="Gemini API key" />
-            <CField placeholder="Custom Base URL (optional)" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} aria-label="Custom base URL" />
-            <CField placeholder="Model (gpt-4o-mini, gemini-1.5-flash)" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model name" />
-            <div><CButton onClick={saveSettings}>Save all</CButton></div>
           </CPanel>
         )}
       </div>
