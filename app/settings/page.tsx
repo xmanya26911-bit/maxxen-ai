@@ -18,6 +18,7 @@ const PRESETS: Record<string, { baseURL: string; model: string; keyHint: string 
   openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini", keyHint: "sk-… from platform.openai.com/api-keys" },
   anthropic: { baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest", keyHint: "sk-ant-… from console.anthropic.com" },
   gemini: { baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-1.5-flash", keyHint: "AIza… from aistudio.google.com" },
+  openrouter: { baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", keyHint: "sk-or-… from openrouter.ai — one key, every model" },
 };
 
 export default function Settings() {
@@ -130,17 +131,20 @@ export default function Settings() {
       <div className="max-w-5xl mx-auto p-6">
         <CStatus text={status} />
         {tab === "endpoint" && (
-          <CPanel title="Your AI — ChatGPT, Claude or Gemini in one tap" sub="Tap a provider, paste the one key, done. Providers don't offer login-for-API, so one pasted key is the whole setup. Anything else works via custom URL + model ID.">
-            <div style={{ display: "flex", gap: 8 }}>
-              {["openai", "anthropic", "gemini"].map((id) => (
-                <CButton key={id} variant={provider === id ? "primary" : "ghost"} onClick={() => pickPreset(id)}>
-                  {id === "openai" ? "◈ ChatGPT" : id === "anthropic" ? "✶ Claude" : "⬢ Gemini"}
-                </CButton>
+          <CPanel title="Your AI — ChatGPT, Claude, Gemini, or one key for all" sub="Tap a provider, paste the one key, done. All-in-one (OpenRouter) unlocks every model with a single key. Providers don't offer login-for-API, so one pasted key is the whole setup.">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                { id: "openai", label: "◈ ChatGPT" },
+                { id: "anthropic", label: "✶ Claude" },
+                { id: "gemini", label: "⬢ Gemini" },
+                { id: "openrouter", label: "⬣ All-in-one" },
+              ].map((p) => (
+                <CButton key={p.id} variant={provider === p.id ? "primary" : "ghost"} onClick={() => pickPreset(p.id)}>{p.label}</CButton>
               ))}
             </div>
             <CField placeholder="Base URL — e.g. https://api.openai.com/v1" value={baseURL} onChange={(e) => { setBaseURL(e.target.value); setProvider("custom"); }} aria-label="Base URL" inputMode="url" />
             <CField placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} aria-label="API key" type="password" autoComplete="off" />
-            <CField placeholder="Model ID — e.g. gpt-4o-mini" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model ID" />
+            <CField placeholder="Model ID — e.g. gpt-4o-mini" value={model} onChange={(e) => { setModel(e.target.value); setProvider("custom"); }} aria-label="Model ID" />
             <p style={{ fontSize: 11, color: "var(--mx-meta)" }}>Key format: {PRESETS[provider]?.keyHint || "as issued by your provider"} · Editing URL/model switches to Custom.</p>
             <div><CButton onClick={saveSettings}>Save endpoint</CButton></div>
             <div><CButton variant="danger" onClick={() => void forgetAll()} disabled={forgetting}>{forgetting ? "Wiping…" : "Forget my vault"}</CButton></div>
