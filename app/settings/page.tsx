@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CButton, CField, CPanel, CStatus } from "@/components/ui";
+import { pushVault, forgetVault } from "@/lib/sync";
 
 type Tab = "endpoint" | "plugins" | "storage" | "hosting";
 
@@ -27,6 +28,7 @@ export default function Settings() {
   const [toolkit, setToolkit] = useState("gmail");
   const [status, setStatus] = useState("");
   const [checking, setChecking] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -58,7 +60,21 @@ export default function Settings() {
     ls("maxxen_vercel_token", vercelToken);
     ls("maxxen_vercel_project", vercelProject);
     ls("maxxen_composio_key", composioKey);
-    setStatus("Saved locally in your browser + ready to sync to YOUR GitHub.");
+    setStatus("Saved locally — syncing to YOUR repo…");
+    void pushVault(ls("maxxen_session")).then((v) => setStatus(v.message));
+  };
+
+  const forgetAll = async () => {
+    if (forgetting) return;
+    setForgetting(true);
+    setStatus("Wiping vault…");
+    const v = await forgetVault(ls("maxxen_session"));
+    setApiKey("");
+    setGithubToken("");
+    setVercelToken("");
+    setComposioKey("");
+    setStatus(v.message);
+    setForgetting(false);
   };
 
   async function testComposio() {
@@ -94,11 +110,13 @@ export default function Settings() {
       <div className="max-w-5xl mx-auto p-6">
         <CStatus text={status} />
         {tab === "endpoint" && (
-          <CPanel title="Your AI endpoint — works with every provider" sub="Base URL + API key + Model ID. Yours, stored only in this browser. OpenAI, Gemini (OpenAI-compatible URL), OpenRouter, Groq, DeepSeek, Ollama, anything.">
+          <CPanel title="Your AI endpoint — works with every provider" sub="Base URL + API key + Model ID. Saved per your login, restored on every device. OpenAI, Gemini (OpenAI-compatible URL), OpenRouter, Groq, DeepSeek, Ollama, anything.">
             <CField placeholder="Base URL — e.g. https://api.openai.com/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} aria-label="Base URL" inputMode="url" />
             <CField placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} aria-label="API key" type="password" autoComplete="off" />
             <CField placeholder="Model ID — e.g. gpt-4o-mini" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model ID" />
             <div><CButton onClick={saveSettings}>Save endpoint</CButton></div>
+            <div><CButton variant="danger" onClick={() => void forgetAll()} disabled={forgetting}>{forgetting ? "Wiping…" : "Forget my vault"}</CButton></div>
+            <p style={{ fontSize: 11, color: "var(--mx-meta)", lineHeight: 1.6 }}>How this works: preferences sync as plain text, keys as AES-256-GCM ciphertext — both in YOUR private maxxen-data repo, per login email. Only this app server can unlock the vault. Wipe it any time here.</p>
           </CPanel>
         )}
         {tab === "plugins" && (
