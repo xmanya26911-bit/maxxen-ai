@@ -27,8 +27,13 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
-  const { messages, apiKey, baseURL, model, githubToken, vercelToken, composioKey, maxSteps } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
+  if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
+    return NextResponse.json(
+      { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, Ollama…). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
+      { status: 400 }
+    );
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages." }, { status: 400 });
   let url: string;
   try {
