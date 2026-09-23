@@ -398,6 +398,7 @@ export default function ChatPage() {
 
   // Confirm a deploy the agent proposed: re-run with explicit confirmation.
   const confirmDeploy = async (summary: string) => {
+    if (sending) return;
     setPendingConfirm(null);
     setActivities([]);
     await runAgent(`Confirmed: proceed with exactly this deployment and nothing else:\n${summary}`);
@@ -427,6 +428,7 @@ export default function ChatPage() {
 
   // Deploy latest HTML build to the USER's Vercel project + poll to terminal.
   const deployLatest = async () => {
+    if (sending) return;
     const html = latestHtml;
     const token = ls("maxxen_vercel_token");
     const project = ls("maxxen_vercel_project") || "maxxen";
@@ -1004,7 +1006,12 @@ export default function ChatPage() {
                           </button>
                         </div>
                       )}
-                      {m.html && expanded === m.html && <HtmlFrame html={m.html} height={420} title={`preview-${i}`} framed />}
+                      {m.html && expanded === m.html &&
+                        (m.html.length > 500000 ? (
+                          <p style={{ fontSize: 12, color: "#e0a0a0" }}>Preview too large ({(m.html.length / 1024).toFixed(0)} KB) — Apply it to GitHub instead.</p>
+                        ) : (
+                          <HtmlFrame html={m.html} height={420} title={`preview-${i}`} framed />
+                        ))}
                       <small>{timeAgo(m.at)}</small>
                     </div>
                   </div>
