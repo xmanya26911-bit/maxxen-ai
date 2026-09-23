@@ -1,208 +1,177 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import "./landing.css";
 
-type Msg = { role: "user" | "assistant"; content: string };
-type Tab = "chat" | "builder" | "plugins" | "storage" | "hosting" | "settings";
+const FEATURES = [
+  { g: "✦", t: "Agent chat that builds", d: "Describe anything — websites, apps, dashboards. Maxxen plans the work, writes the code, and shows a live preview.", c: "<code>Chat → Build → Preview</code>" },
+  { g: "◈", t: "BYOK — zero cost for you", d: "Paste your own Gemini and ChatGPT keys, plus any custom base URL. Your keys never leave your browser.", c: "<code>Gemini · OpenAI · OpenRouter</code>" },
+  { g: "⬢", t: "Storage in YOUR GitHub", d: "Chats, projects and settings save to a private maxxen-data repo in the user's own account. Never the developer's.", c: "<code>maxxen-data · private</code>" },
+  { g: "⬣", t: "Plugins via YOUR Composio", d: "Connect Gmail, Notion, Slack, Sheets, GitHub and 500+ tools with your own Composio key. Your plugins, your data.", c: "<code>500+ toolkits</code>" },
+  { g: "▲", t: "Deploy to YOUR Vercel", d: "Ship what you build straight to your own Vercel project. This very site runs that way.", c: "<code>maxxen.vercel.app</code>" },
+  { g: "✉", t: "10-minute email login", d: "Passwordless OTP login. Codes live exactly 10 minutes, then vanish — nothing stored, nothing to leak.", c: "<code>6 digits · auto-purged</code>" },
+];
 
-const ls = (k: string, v?: string) => {
-  if (typeof window === "undefined") return "";
-  if (v === undefined) return localStorage.getItem(k) || "";
-  if (v === "__DEL__") localStorage.removeItem(k);
-  else localStorage.setItem(k, v);
-  return v;
-};
+const FAQS = [
+  { q: "Is Maxxen AI free?", a: "Yes. There are no Maxxen servers billing you — you bring your own Gemini / ChatGPT API key, so you only ever pay your AI provider (free tiers work fine). Hosting is your own Vercel, storage is your own GitHub." },
+  { q: "Where does my data go?", a: "Into a private <code>maxxen-data</code> repository inside YOUR GitHub account, created automatically from the token you paste. The developer cannot see it — the app literally has no database of its own." },
+  { q: "Which AI models work?", a: "Anything OpenAI-compatible plus Gemini: GPT-4o-mini, Gemini Flash, and custom base URLs like OpenRouter or Groq. Pick the model in /chat or Settings." },
+  { q: "How do plugins work?", a: "Paste YOUR Composio API key on the Plugins tab, connect toolkits (Gmail, Notion, Slack…) at app.composio.dev, and the agent can act on them. Keys stay in your browser." },
+  { q: "Why did my OTP say incorrect?", a: "Each new request replaces the previous code — always use the code from your NEWEST email, within 10 minutes. Hit Resend if unsure." },
+];
 
-export default function Home() {
-  const [session, setSession] = useState("");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [ticket, setTicket] = useState("");
-  const [authMsg, setAuthMsg] = useState("");
-  const [tab, setTab] = useState<Tab>("chat");
-  const [provider, setProvider] = useState("openai");
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
-  const [baseURL, setBaseURL] = useState("");
-  const [model, setModel] = useState("");
-  const [githubToken, setGithubToken] = useState("");
-  const [vercelToken, setVercelToken] = useState("");
-  const [vercelProject, setVercelProject] = useState("maxxen");
-  const [composioKey, setComposioKey] = useState("");
-  const [toolkit, setToolkit] = useState("gmail");
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [buildHtml, setBuildHtml] = useState("");
-  const [status, setStatus] = useState("");
-
+export default function Landing() {
   useEffect(() => {
-    setSession(ls("maxxen_session"));
-    const savedEmail = ls("maxxen_otp_email");
-    if (savedEmail) { setEmail(savedEmail); setTicket(ls("maxxen_otp_ticket")); setOtpSent(true); }
-    setProvider(ls("maxxen_provider") || "openai");
-    setOpenaiKey(ls("maxxen_openai_key"));
-    setGeminiKey(ls("maxxen_gemini_key"));
-    setBaseURL(ls("maxxen_baseurl"));
-    setModel(ls("maxxen_model"));
-    setGithubToken(ls("maxxen_github_token"));
-    setVercelToken(ls("maxxen_vercel_token"));
-    setVercelProject(ls("maxxen_vercel_project") || "maxxen");
-    setComposioKey(ls("maxxen_composio_key"));
+    const els = Array.from(document.querySelectorAll(".lp-reveal"));
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => e.isIntersecting && e.target.classList.add("in")),
+      { threshold: 0.12 }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
   }, []);
 
-  const saveSettings = () => {
-    ls("maxxen_provider", provider);
-    ls("maxxen_openai_key", openaiKey);
-    ls("maxxen_gemini_key", geminiKey);
-    ls("maxxen_baseurl", baseURL);
-    ls("maxxen_model", model);
-    ls("maxxen_github_token", githubToken);
-    ls("maxxen_vercel_token", vercelToken);
-    ls("maxxen_vercel_project", vercelProject);
-    ls("maxxen_composio_key", composioKey);
-    setStatus("Saved locally in your browser + ready to sync to YOUR GitHub.");
-  };
-
-  const activeKey = provider === "gemini" ? geminiKey : openaiKey;
-
-  async function sendOtp() {
-    setAuthMsg("Sending...");
-    const r = await fetch("/api/auth/send-otp", { method: "POST", body: JSON.stringify({ email }) });
-    const j = await r.json();
-    if (j.ok) { setOtpSent(true); setTicket(j.ticket || ""); ls("maxxen_otp_ticket", j.ticket || ""); ls("maxxen_otp_email", email); setAuthMsg("6-digit code sent from xmanya26911@gmail.com"); }
-    else setAuthMsg(j.error || "Failed");
-  }
-  async function verifyOtp() {
-    setAuthMsg("Verifying...");
-    const r = await fetch("/api/auth/verify-otp", { method: "POST", body: JSON.stringify({ email, code: otp, ticket }) });
-    const j = await r.json();
-    if (j.ok) { ls("maxxen_otp_ticket", "__DEL__"); ls("maxxen_otp_email", "__DEL__"); ls("maxxen_session", j.session); setSession(j.session); setAuthMsg(""); }
-    else setAuthMsg(j.error || "Incorrect code");
-  }
-  async function chat(sendText?: string) {
-    const text = sendText ?? input;
-    if (!text.trim() || loading) return;
-    if (!activeKey) { setStatus("Paste your Gemini or OpenAI key in Settings first (BYOK)."); setTab("settings"); return; }
-    const next = [...messages, { role: "user", content: text } as Msg];
-    setMessages(next); setInput(""); setLoading(true); setStatus("");
-    try {
-      const r = await fetch("/api/chat", { method: "POST", body: JSON.stringify({ messages: next, provider, apiKey: activeKey, baseURL, model }) });
-      const j = await r.json();
-      if (j.error) setStatus(j.error);
-      else {
-        const reply = j.reply as string;
-        setMessages([...next, { role: "assistant", content: reply }]);
-        const m = reply.match(/```html([\s\S]*?)```/i);
-        if (m) setBuildHtml(m[1].trim());
-      }
-    } catch (e: any) { setStatus(e.message); }
-    setLoading(false);
-  }
-
-  if (!session) {
-    return (
-      <main className="min-h-screen bg-gradient-to-br from-violet-950 via-black to-fuchsia-950 flex items-center justify-center p-6">
-        <div className="glass max-w-md w-full p-8 rounded-3xl">
-          <h1 className="text-4xl font-black">MAXXEN <span className="text-fuchsia-400">AI</span></h1>
-          <p className="text-white/60 mt-2">Build anything. Your keys. Your GitHub. Your Vercel. Your plugins.</p>
-          <input className="input mt-6" placeholder="you@email.com" value={email} onChange={e=>setEmail(e.target.value)} />
-          {!otpSent ? (
-            <button onClick={sendOtp} className="btn-primary w-full mt-3 py-3">Send 6-digit code</button>
-          ) : (
-            <>
-              <input className="input mt-3 text-center text-2xl tracking-[0.5em]" placeholder="000000" value={otp} onChange={e=>setOtp(e.target.value)} maxLength={6} />
-              <button onClick={verifyOtp} className="btn-primary w-full mt-3 py-3">Verify and Login</button>
-              <button onClick={sendOtp} className="w-full mt-2 py-2 text-sm text-white/60 hover:text-white">Resend code (older codes stop working)</button>
-            </>
-          )}
-          {authMsg && <p className="text-sm text-white/70 mt-3">{authMsg}</p>}
-          <p className="text-xs text-white/40 mt-4">Code from xmanya26911@gmail.com, expires in 10 min. Everything is BYOK + your GitHub.</p>
-        </div>
-      </main>
-    );
-  }
   return (
-    <main className="min-h-screen bg-[#07070f]">
-      <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="font-black text-xl">MAXXEN <span className="text-fuchsia-400">AI</span></div>
-        <div className="flex items-center gap-3">
-          <a href="/chat" className="btn-primary px-4 py-1.5 text-sm" style={{ textDecoration: "none" }}>Open Chat →</a>
-          <button onClick={()=>{ls("maxxen_session","__DEL__"); setSession("");}} className="text-sm text-white/60 hover:text-white">Logout</button>
+    <div className="lp">
+      <nav className="lp-nav">
+        <a href="/" className="lp-brand"><span className="lp-mark"><i /><i /><i /></span>MAXXEN</a>
+        <div className="lp-links">
+          <a href="#product">Product</a>
+          <a href="#how">How it works</a>
+          <a href="#security">Security</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div className="lp-nav-right">
+          <a href="/login" className="lp-login">Log in</a>
+          <a href="/chat" className="lp-cta">Launch app ↗</a>
+        </div>
+      </nav>
+
+      <header className="lp-hero">
+        <span className="lp-orb lp-o1" />
+        <span className="lp-orb lp-o2" />
+        <span className="lp-orb lp-o3" />
+        <p className="lp-eyebrow">MAXXEN AI — <b>YOUR KEYS · YOUR GITHUB · YOUR VERCEL</b></p>
+        <h1>BUILD SOMETHING<br /><em>remarkable</em><br />DIFFERENT<span className="dot">.</span></h1>
+        <p className="lp-sub">Maxxen is a multipurpose agentic AI that <b>designs, builds and deploys</b> websites, apps and dashboards with you — running on <b>your</b> API keys, <b>your</b> GitHub and <b>your</b> Vercel. Zero cost for anyone else.</p>
+        <div className="lp-hero-cta">
+          <a href="/login" className="lp-cta">Start building — free ↗</a>
+          <a href="#how" className="lp-cta ghost">See how it works</a>
+        </div>
+        <div className="lp-stats">
+          <div className="lp-stat"><b>$0</b><span>PLATFORM COST</span></div>
+          <div className="lp-stat"><b>10 min</b><span>OTP LIFETIME</span></div>
+          <div className="lp-stat"><b>500+</b><span>PLUGINS VIA COMPOSIO</span></div>
+          <div className="lp-stat"><b>100%</b><span>YOUR INFRASTRUCTURE</span></div>
         </div>
       </header>
-      <nav className="flex gap-2 px-6 py-3 border-b border-white/10 overflow-x-auto">
-        {(["chat","builder","plugins","storage","hosting","settings"] as Tab[]).map(t=>(
-          <button key={t} onClick={()=>setTab(t)} className={"px-4 py-2 rounded-lg capitalize text-sm " + (tab===t?"bg-violet-600":"bg-white/5")}>{t}</button>
-        ))}
-      </nav>
-      <div className="max-w-5xl mx-auto p-6">
-        {status && <div className="glass p-3 rounded-xl mb-4 text-sm">{status}</div>}
-        {(tab==="chat"||tab==="builder") && (
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="glass rounded-2xl p-4 flex flex-col h-[65vh]">
-              <div className="flex-1 overflow-y-auto space-y-3">
-                {messages.length===0 && <p className="text-white/40">Ask Maxxen to build a website, app, landing page...</p>}
-                {messages.map((m,i)=><div key={i} className={"p-3 rounded-xl text-sm whitespace-pre-wrap " + (m.role==="user"?"bg-violet-600/30 ml-8":"bg-white/5 mr-8")}>{m.content.slice(0,4000)}</div>)}
-                {loading && <p className="text-white/40 text-sm">Thinking...</p>}
-              </div>
-              <div className="flex gap-2 mt-3">
-                <select value={provider} onChange={e=>setProvider(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl px-2">
-                  <option value="openai">ChatGPT</option>
-                  <option value="gemini">Gemini</option>
-                </select>
-                <input className="input" placeholder="Ask / Build anything..." value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&chat()} />
-                <button onClick={()=>chat()} className="btn-primary px-5">Send</button>
-              </div>
-            </div>
-            <div className="glass rounded-2xl p-4 h-[65vh] flex flex-col">
-              <h3 className="font-bold mb-2">Live Preview + Code</h3>
-              {buildHtml ? <iframe title="preview" className="flex-1 bg-white rounded-xl" srcDoc={buildHtml}/> : <p className="text-white/40 text-sm">HTML output will preview here automatically.</p>}
-              <button onClick={()=>chat("Build me a stunning single-file HTML landing page for Maxxen AI with hero, features, pricing, dark gradient")} className="bg-white/10 px-4 py-2 rounded-xl text-sm mt-3">Demo build</button>
-            </div>
-          </div>
-        )}
-        {tab==="plugins" && (
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xl font-bold">Your Composio — Your Plugins</h2>
-            <p className="text-white/60 text-sm mt-1">Paste YOUR Composio API key, then connect Gmail, GitHub, Notion, Slack, Vercel from YOUR dashboard.</p>
-            <input className="input mt-4" placeholder="YOUR Composio API key" value={composioKey} onChange={e=>setComposioKey(e.target.value)} />
-            <div className="flex gap-2 mt-3">
-              <input className="input" placeholder="toolkit: gmail, github, notion..." value={toolkit} onChange={e=>setToolkit(e.target.value)} />
-            </div>
-            <a href="https://app.composio.dev" target="_blank" className="text-fuchsia-300 text-sm underline mt-3 inline-block">Open YOUR Composio dashboard</a>
-            <button onClick={saveSettings} className="btn-primary px-5 py-2 mt-4 block">Save</button>
-          </div>
-        )}
-        {tab==="storage" && (
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xl font-bold">Your GitHub Storage (not mine)</h2>
-            <p className="text-white/60 text-sm">Paste YOUR GitHub token (repo scope). Maxxen uses maxxen-data in YOUR account.</p>
-            <input className="input mt-4" placeholder="ghp_... YOUR token" value={githubToken} onChange={e=>setGithubToken(e.target.value)} />
-            <button onClick={saveSettings} className="bg-white/10 px-5 py-2 rounded-xl mt-3">Save</button>
-          </div>
-        )}
-        {tab==="hosting" && (
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xl font-bold">Your Vercel Hosting</h2>
-            <p className="text-white/60 text-sm">Host from YOUR Vercel account. Create project maxxen, paste YOUR token.</p>
-            <input className="input mt-4" placeholder="YOUR Vercel token" value={vercelToken} onChange={e=>setVercelToken(e.target.value)} />
-            <input className="input mt-2" placeholder="Project name (maxxen)" value={vercelProject} onChange={e=>setVercelProject(e.target.value)} />
-            <button onClick={saveSettings} className="btn-primary px-5 py-2 mt-3">Save</button>
-          </div>
-        )}
-        {tab==="settings" && (
-          <div className="glass rounded-2xl p-6 space-y-3">
-            <h2 className="text-xl font-bold">BYOK Settings — zero cost for owner</h2>
-            <select value={provider} onChange={e=>setProvider(e.target.value)} className="input"><option value="openai">ChatGPT / OpenAI</option><option value="gemini">Gemini</option></select>
-            <input className="input" placeholder="OpenAI key sk-... (YOUR browser only)" value={openaiKey} onChange={e=>setOpenaiKey(e.target.value)} />
-            <input className="input" placeholder="Gemini key AIza... (YOUR browser only)" value={geminiKey} onChange={e=>setGeminiKey(e.target.value)} />
-            <input className="input" placeholder="Custom Base URL (optional)" value={baseURL} onChange={e=>setBaseURL(e.target.value)} />
-            <input className="input" placeholder="Model (gpt-4o-mini, gemini-1.5-flash)" value={model} onChange={e=>setModel(e.target.value)} />
-            <button onClick={saveSettings} className="btn-primary px-6 py-3">Save all</button>
-          </div>
-        )}
+
+      <div className="lp-marquee" aria-hidden="true">
+        <div className="lp-marquee-track">
+          {[0, 1].flatMap((k) => ["WEBSITES", "APPS", "DASHBOARDS", "LANDING PAGES", "AGENTS", "AUTOMATIONS", "PROTOTYPES", "DEPLOYS"].map((w, i) => <span key={`${k}-${i}`}>{w} <i>✦</i></span>))}
+        </div>
       </div>
-    </main>
+
+      <section className="lp-section" id="product">
+        <p className="lp-kicker lp-reveal">THE PRODUCT</p>
+        <h2 className="lp-h2 lp-reveal">One workspace.<br />Every superpower.</h2>
+        <p className="lp-lead lp-reveal">Chat, build, preview, save and ship — without handing your keys or your data to anyone.</p>
+        <div className="lp-grid">
+          {FEATURES.map((f) => (
+            <div className="lp-card lp-reveal" key={f.t}>
+              <div className="glyph">{f.g}</div>
+              <h3>{f.t}</h3>
+              <p>{f.d}</p>
+              <p style={{ marginTop: 14 }} dangerouslySetInnerHTML={{ __html: f.c }} />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-section" id="how" style={{ paddingTop: 0 }}>
+        <p className="lp-kicker lp-reveal">HOW IT WORKS</p>
+        <h2 className="lp-h2 lp-reveal">Live in three steps.</h2>
+        <div className="lp-steps" style={{ marginTop: 50 }}>
+          <div className="lp-step lp-reveal"><b className="num">1</b><h3>Verify your email</h3><p>Get a 6-digit code at any address. It self-destructs in <code>10 minutes</code> — nothing is stored.</p></div>
+          <div className="lp-step lp-reveal"><b className="num">2</b><h3>Bring your keys</h3><p>Paste Gemini / ChatGPT keys, your GitHub token and your Composio key. Everything stays in <code>your browser</code>.</p></div>
+          <div className="lp-step lp-reveal"><b className="num">3</b><h3>Build &amp; deploy</h3><p>Chat in <code>/chat</code>, preview live builds, save to <code>your GitHub</code>, ship to <code>your Vercel</code>.</p></div>
+        </div>
+      </section>
+
+      <div className="lp-band" id="security">
+        <div className="lp-band-inner">
+          <div>
+            <p className="lp-kicker lp-reveal">SECURITY MODEL</p>
+            <h2 className="lp-h2 lp-reveal">We hold nothing.</h2>
+            <p className="lp-lead lp-reveal" style={{ marginBottom: 0 }}>There is no Maxxen database. No developer backdoor. Your secrets live in your browser; your work lives in your GitHub.</p>
+            <div className="lp-checks">
+              <div className="lp-check lp-reveal"><i>✓</i><div><b>Keys never leave your browser</b><span>BYOK calls go straight from your device to OpenAI / Google.</span></div></div>
+              <div className="lp-check lp-reveal"><i>✓</i><div><b>Data in your private repo</b><span>Chats and builds save to maxxen-data under your account.</span></div></div>
+              <div className="lp-check lp-reveal"><i>✓</i><div><b>OTPs evaporate in 10 minutes</b><span>Signed tickets carry their own expiry; leftovers are purged every request.</span></div></div>
+            </div>
+          </div>
+          <div className="lp-terminal lp-reveal">
+            <header><i /><i /><i /></header>
+            <pre><span className="c"># your footprint on our servers: nothing.</span>{"\n"}<span className="g">$</span> maxxen login you@mail.com{"\n"}<span className="g">✓</span> code sent · expires in 10:00{"\n"}<span className="g">$</span> maxxen chat --byok{"\n"}<span className="g">✓</span> keys: browser-only{"\n"}<span className="g">✓</span> storage: your-github/maxxen-data{"\n"}<span className="g">✓</span> deploy: your-vercel/maxxen</pre>
+          </div>
+        </div>
+      </div>
+
+      <section className="lp-section">
+        <p className="lp-kicker lp-reveal">THE BUILDER</p>
+        <h2 className="lp-h2 lp-reveal">Describe it. Ship it.</h2>
+        <p className="lp-lead lp-reveal">Every build renders as a live artifact you can preview, apply to your GitHub, and deploy.</p>
+        <div className="lp-teaser lp-reveal">
+          <div className="lp-teaser-bar"><div className="dots"><i /><i /><i /></div>maxxen.vercel.app/chat</div>
+          <div className="lp-teaser-body">
+            <div className="lp-teaser-prompt">
+              <small>YOU ASKED</small>
+              <p>“Build me a premium landing page — <em>editorial type,</em> dark glass, live preview.”</p>
+              <div style={{ marginTop: 26 }}><a href="/chat" className="lp-cta">Try it live ↗</a></div>
+            </div>
+            <div className="lp-teaser-shot">
+              <b>MAXXEN</b>
+              <strong>BUILT<br />FOR THE<br /><i>DIFFERENT.</i></strong>
+              <span>● Live preview · single-file HTML</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="lp-section" id="faq" style={{ paddingTop: 0 }}>
+        <p className="lp-kicker lp-reveal">QUESTIONS</p>
+        <h2 className="lp-h2 lp-reveal">Asked often.</h2>
+        <div className="lp-faq">
+          {FAQS.map((f) => (
+            <details key={f.q} className="lp-reveal">
+              <summary>{f.q}<span>+</span></summary>
+              <p dangerouslySetInnerHTML={{ __html: f.a }} />
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section className="lp-final">
+        <span className="lp-orb lp-o1" />
+        <span className="lp-orb lp-o2" />
+        <p className="lp-eyebrow lp-reveal">FREE FOREVER · BRING YOUR KEYS</p>
+        <h2 className="lp-reveal">STOP SCROLLING.<br />Start building.</h2>
+        <p className="lp-reveal">Your first deploy is two minutes away.</p>
+        <div className="lp-hero-cta lp-reveal">
+          <a href="/login" className="lp-cta">Get your code ↗</a>
+          <a href="/chat" className="lp-cta ghost">Open /chat</a>
+        </div>
+      </section>
+
+      <footer className="lp-footer">
+        <a href="/" className="lp-brand" style={{ fontSize: 12 }}><span className="lp-mark"><i /><i /><i /></span>MAXXEN</a>
+        <nav>
+          <a href="/chat">Chat</a>
+          <a href="/login">Login</a>
+          <a href="/settings">Settings</a>
+          <a href="https://github.com/xmanya26911-bit/maxxen-ai" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+        <span>BYOK · Your GitHub · Your Vercel · © 2026 Maxxen AI</span>
+      </footer>
+    </div>
   );
 }
