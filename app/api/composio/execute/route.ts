@@ -31,7 +31,8 @@ export async function POST(req: Request) {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const detail = (j as any)?.error || (j as any)?.message || JSON.stringify(j).slice(0, 500);
+      const rawErr = (j as any)?.error ?? (j as any)?.message ?? j;
+      const detail = typeof rawErr === "string" ? rawErr : JSON.stringify(rawErr).slice(0, 500);
       return NextResponse.json({ error: `Composio refused the call (HTTP ${r.status}): ${detail}` }, { status: 502 });
     }
     return NextResponse.json({ ok: true, tool: slug, result: (j as any)?.data ?? j });
