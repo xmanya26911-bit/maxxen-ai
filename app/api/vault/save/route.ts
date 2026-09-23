@@ -4,25 +4,28 @@ import { verifySession } from "@/lib/session";
 import { SETTINGS_PATH, sealSecrets, sanitizePrefs, type StoredSettings } from "@/lib/vault";
 
 // Saves the calling USER's preferences + encrypted secrets to THEIR OWN
-// maxxen-data repo. Auth: HMAC session (proves the login) AND the email in
-// the body must match the session email. The GitHub token is used once and
-// never stored server-side.
+// maxxen-data repo. Pass wipe:true to fully reset (prefs + vault cleared).
+// Auth: HMAC session + the user's own GitHub token (used once, never stored).
 export async function POST(req: Request) {
   try {
-    const { session, githubToken, prefs, secrets } = await req.json();
+    const { session, githubToken, prefs, secrets, wipe } = await req.json();
     const email = verifySession(String(session || ""));
     if (!email) return NextResponse.json({ error: "Session expired. Log in again." }, { status: 401 });
     if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token first (Settings → Storage)." }, { status: 400 });
 
     const oct = new Octokit({ auth: githubToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
-    // Ownership needs no extra check: the token can only touch its own
-    // account, so everything below is inherently scoped to the caller.
     const repo = "maxxen-data";
     try {
       await oct.rest.repos.get({ owner: me.login, repo });
-    } catch {
-      await oct.rest.repos.createForAuthenticatedUser({ name: repo, private: true, description: "Maxxen AI user storage (preferences + encrypted vault)" });
+    } catch (e: any) {
+      if (e?.status === 404) {
+        try {
+          await oct.rest.repos.createForAuthenticatedUser({ name: repo, private: true, description: "Maxxen AI user storage (preferences + encrypted vault)" });
+        } catch (c: any) {
+          if (c?.status !== 422) throw c;
+        }
+      } else throw e;
     }
 
     let sha: string | undefined;
@@ -37,7 +40,8 @@ export async function POST(req: Request) {
           prev = null;
         }
       }
-    } catch {
+    } catch (e: any) {
+      if (e?.status !== 404) throw new Error(`Couldn't read settings: ${e?.message || e}`);
     }
 
     const cleanPrefs = sanitizePrefs(prefs);
@@ -48,21 +52,28 @@ export async function POST(req: Request) {
       }
     }
 
-    const body: StoredSettings = {
-      updatedAt: new Date().toISOString(),
-      prefs: { ...(prev && typeof prev.prefs === "object" ? prev.prefs : {}), ...cleanPrefs },
-      vault: Object.keys(cleanSecrets).length ? sealSecrets(email, cleanSecrets) : null,
-    };
+    const body: StoredSettings = wipe
+      ? { updatedAt: new Date().toISOString(), prefs: {}, vault: null }
+      : {
+          updatedAt: new Date().toISOString(),
+          prefs: { ...(prev && typeof prev.prefs === "object" ? prev.prefs : {}), ...cleanPrefs },
+          vault: Object.keys(cleanSecrets).length ? sealSecrets(email, cleanSecrets) : null,
+        };
 
     await oct.rest.repos.createOrUpdateFileContents({
       owner: me.login,
       repo,
       path: SETTINGS_PATH,
-      message: "maxxen: sync preferences + encrypted vault",
+      message: wipe ? "maxxen: wipe vault" : "maxxen: sync preferences + encrypted vault",
       content: Buffer.from(JSON.stringify(body, null, 2)).toString("base64"),
       sha,
     });
-    return NextResponse.json({ ok: true, repo: `${me.login}/${repo}`, savedSecrets: Object.keys(cleanSecrets).length > 0 });
+    return NextResponse.json({
+      ok: true,
+      repo: `${me.login}/${repo}`,
+      savedSecrets: !wipe && Object.keys(cleanSecrets).length > 0,
+      wiped: !!wipe,
+    });
   } catch (e: any) {
     const raw = e.message ?? "Vault save failed";
     const hint = /401|Bad credentials/i.test(raw) ? " — GitHub token invalid; recreate it (repo scope)." : "";
