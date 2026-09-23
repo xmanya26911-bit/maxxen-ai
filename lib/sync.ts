@@ -14,6 +14,7 @@ const ls = (k: string, v?: string) => {
 const PREF_MAP: Record<string, string> = {
   maxxen_baseurl: "baseURL",
   maxxen_model: "model",
+  maxxen_provider: "provider",
   maxxen_vercel_project: "vercelProject",
 };
 const SECRET_MAP: Record<string, string> = {
