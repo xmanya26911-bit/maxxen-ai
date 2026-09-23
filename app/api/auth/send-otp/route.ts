@@ -12,16 +12,16 @@ export async function POST(req: Request) {
       await sendOtpMail(email, code);
     } catch (e: any) {
       const raw = e.message ?? "";
-      if (/535|SmtpClientAuthentication|authentication unsuccessful/i.test(raw))
+      if (/535|authentication unsuccessful/i.test(raw))
         return NextResponse.json(
-          { error: "Outlook blocked SMTP login (535). Fix: 1) enable 2FA on maxxen.app@outlook.com, 2) create an App Password, 3) enable Authenticated SMTP for the mailbox, 4) set OUTLOOK_PASSWORD to the App Password (not the normal password). See README SMTP section." },
+          { error: "Gmail blocked the login. Fix: use a Google App Password in GMAIL_APP_PASSWORD (not your normal password) with 2-Step Verification on." },
           { status: 500 }
         );
-      return NextResponse.json({ error: raw || "Send failed. Check OUTLOOK_EMAIL/PASSWORD." }, { status: 500 });
+      return NextResponse.json({ error: raw || "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD." }, { status: 500 });
     }
     otpStore.set(email.toLowerCase(), { code, expiresAt: Date.now() + 10 * 60 * 1000, attempts: 0 });
     return NextResponse.json({ ok: true, message: "OTP sent" });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "Send failed. Check OUTLOOK_EMAIL/PASSWORD." }, { status: 500 });
+    return NextResponse.json({ error: e.message ?? "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD." }, { status: 500 });
   }
 }

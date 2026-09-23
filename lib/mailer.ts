@@ -1,19 +1,19 @@
 import nodemailer from "nodemailer";
 
 export function mailer() {
-  const user = process.env.OUTLOOK_EMAIL!;
-  const pass = process.env.OUTLOOK_PASSWORD!;
-  if (!user || !pass) throw new Error("Missing OUTLOOK_EMAIL / OUTLOOK_PASSWORD env");
+  const user = process.env.GMAIL_EMAIL!;
+  const pass = (process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+  if (!user || !pass) throw new Error("Missing GMAIL_EMAIL / GMAIL_APP_PASSWORD env");
   return nodemailer.createTransport({
-    host: "smtp-mail.outlook.com",
-    port: 587,
-    secure: false,
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: { user, pass },
   });
 }
 
 export async function sendOtpMail(to: string, code: string) {
-  const from = process.env.OUTLOOK_EMAIL!;
+  const from = process.env.GMAIL_EMAIL!;
   await mailer().sendMail({
     from: `"Maxxen AI" <${from}>`,
     to,
