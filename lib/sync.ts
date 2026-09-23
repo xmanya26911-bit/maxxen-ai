@@ -76,23 +76,32 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
     });
     const j = await r.json();
     if (j.error) return { ok: false, message: j.error };
-    return { ok: true, message: j.savedSecrets ? "Synced + encrypted to YOUR repo." : "Preferences synced to YOUR repo." };
+    return { ok: true, message: j.savedSecrets ? "Saved locally ✓ / Synced encrypted ✓" : "Saved locally ✓ / Preferences synced ✓" };
   } catch (e: any) {
     return { ok: false, message: e.message || "Sync failed — kept locally." };
   }
 }
 
 export async function forgetVault(session: string): Promise<{ ok: boolean; message: string }> {
+  // Complete reset: server wipes prefs + vault (wipe:true); browser drops
+  // every maxxen_* key except session, email, OTP leftovers and chats.
+  // Conversations are user data, not settings — they are deliberately kept.
+  const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
   try {
     const githubToken = ls("maxxen_github_token");
     if (githubToken) {
       await fetch("/api/vault/save", {
         method: "POST",
-        body: JSON.stringify({ session, githubToken, prefs: {}, secrets: {} }),
+        body: JSON.stringify({ session, githubToken, prefs: {}, secrets: {}, wipe: true }),
       });
     }
-    for (const local of Object.keys(SECRET_MAP)) ls(local, "__DEL__");
-    return { ok: true, message: "Vault wiped in YOUR repo; keys cleared from this browser." };
+    if (typeof window !== "undefined") {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i) || "";
+        if (k.startsWith("maxxen_") && !KEEP.has(k)) localStorage.removeItem(k);
+      }
+    }
+    return { ok: true, message: "Vault, keys and preferences wiped. Your conversations were kept." };
   } catch (e: any) {
     return { ok: false, message: e.message || "Forget failed." };
   }
