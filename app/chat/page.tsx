@@ -76,6 +76,15 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
   );
 }
 
+// One-tap provider presets — fill Base URL + Model ID, never touch the key.
+// Honest note: no provider offers "login with X" for API usage, so a pasted
+// key is unavoidable; presets remove everything else.
+const PROVIDERS = [
+  { id: "openai", glyph: "◈", label: "ChatGPT", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini", keyHint: "sk-… from platform.openai.com/api-keys" },
+  { id: "anthropic", glyph: "✶", label: "Claude", baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest", keyHint: "sk-ant-… from console.anthropic.com" },
+  { id: "gemini", glyph: "⬢", label: "Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-1.5-flash", keyHint: "AIza… from aistudio.google.com" },
+];
+
 const menuField = {
   width: "100%",
   background: "rgba(0,0,0,.4)",
@@ -106,6 +115,7 @@ export default function ChatPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [model, setModel] = useState("");
+  const [prov, setProv] = useState("custom");
   const [fBase, setFBase] = useState("");
   const [fKey, setFKey] = useState("");
   const [fModel, setFModel] = useState("");
@@ -176,6 +186,7 @@ export default function ChatPage() {
     setEmail(ls("maxxen_otp_email"));
     const savedModel = ls("maxxen_model");
     setModel(savedModel);
+    setProv(ls("maxxen_provider") || "custom");
     setFBase(ls("maxxen_baseurl"));
     setFKey(ls("maxxen_apikey"));
     setFModel(savedModel);
@@ -207,6 +218,17 @@ export default function ChatPage() {
     });
   };
 
+  const pickProvider = (id: string) => {
+    const p = PROVIDERS.find((x) => x.id === id);
+    if (!p) return;
+    setProv(id);
+    setFBase(p.baseURL);
+    setFModel(p.model);
+    ls("maxxen_provider", id);
+    ls("maxxen_baseurl", p.baseURL);
+    ls("maxxen_model", p.model);
+  };
+
   const applyEndpoint = () => {
     if (!fKey.trim()) {
       setStatus("Paste your API key first.");
@@ -219,6 +241,7 @@ export default function ChatPage() {
     ls("maxxen_baseurl", fBase.trim());
     ls("maxxen_apikey", fKey.trim());
     ls("maxxen_model", fModel.trim());
+    ls("maxxen_provider", prov === "custom" ? "custom" : prov);
     setModel(fModel.trim());
     setModelOpen(false);
     setStatus("Saved locally — syncing to YOUR repo…");
@@ -252,6 +275,7 @@ export default function ChatPage() {
           apiKey: key,
           baseURL: base,
           model: mid,
+          provider: ls("maxxen_provider") || "custom",
         }),
       });
       const j = await r.json();
@@ -397,13 +421,25 @@ export default function ChatPage() {
               </button>
               {modelOpen && (
                 <div className="model-menu" role="menu" style={{ width: 252 }}>
-                  <small>YOUR ENDPOINT (BYOK)</small>
+                  <small>PICK YOUR AI (BYOK)</small>
+                  <div style={{ display: "flex", gap: 6, padding: "2px 7px 9px" }}>
+                    {PROVIDERS.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => pickProvider(p.id)}
+                        style={{ flex: 1, borderColor: prov === p.id ? "rgba(205,220,255,.35)" : undefined, background: prov === p.id ? "rgba(203,220,255,.08)" : undefined }}
+                      >
+                        {p.glyph} {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  <small>YOUR ENDPOINT</small>
                   <div style={{ display: "grid", gap: 6, padding: "2px 7px 9px" }}>
-                    <input value={fBase} onChange={(e) => setFBase(e.target.value)} placeholder="Base URL — https://api.openai.com/v1" aria-label="Base URL" style={menuField} />
-                    <input value={fKey} onChange={(e) => setFKey(e.target.value)} placeholder="API key" aria-label="API key" type="password" autoComplete="off" style={menuField} />
+                    <input value={fBase} onChange={(e) => { setFBase(e.target.value); setProv("custom"); }} placeholder="Base URL — https://api.openai.com/v1" aria-label="Base URL" style={menuField} />
+                    <input value={fKey} onChange={(e) => setFKey(e.target.value)} placeholder="API key — paste once, synced per account" aria-label="API key" type="password" autoComplete="off" style={menuField} />
                     <input
                       value={fModel}
-                      onChange={(e) => setFModel(e.target.value)}
+                      onChange={(e) => { setFModel(e.target.value); setProv("custom"); }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault();
