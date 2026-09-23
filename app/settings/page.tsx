@@ -14,6 +14,12 @@ const ls = (k: string, v?: string) => {
   return v;
 };
 
+const PRESETS: Record<string, { baseURL: string; model: string; keyHint: string }> = {
+  openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini", keyHint: "sk-… from platform.openai.com/api-keys" },
+  anthropic: { baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest", keyHint: "sk-ant-… from console.anthropic.com" },
+  gemini: { baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-1.5-flash", keyHint: "AIza… from aistudio.google.com" },
+};
+
 export default function Settings() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -21,6 +27,7 @@ export default function Settings() {
   const [baseURL, setBaseURL] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [provider, setProvider] = useState("custom");
   const [githubToken, setGithubToken] = useState("");
   const [vercelToken, setVercelToken] = useState("");
   const [vercelProject, setVercelProject] = useState("maxxen");
@@ -44,6 +51,7 @@ export default function Settings() {
       setBaseURL(ls("maxxen_baseurl"));
       setApiKey(ls("maxxen_apikey"));
       setModel(ls("maxxen_model"));
+      setProvider(ls("maxxen_provider") || "custom");
       setGithubToken(ls("maxxen_github_token"));
       setVercelToken(ls("maxxen_vercel_token"));
       setVercelProject(ls("maxxen_vercel_project") || "maxxen");
@@ -52,10 +60,22 @@ export default function Settings() {
     })();
   }, [router]);
 
+  const pickPreset = (id: string) => {
+    const p = PRESETS[id];
+    if (!p) return;
+    setProvider(id);
+    setBaseURL(p.baseURL);
+    setModel(p.model);
+    ls("maxxen_provider", id);
+    ls("maxxen_baseurl", p.baseURL);
+    ls("maxxen_model", p.model);
+  };
+
   const saveSettings = () => {
     ls("maxxen_baseurl", baseURL.trim());
     ls("maxxen_apikey", apiKey.trim());
     ls("maxxen_model", model.trim());
+    ls("maxxen_provider", provider);
     ls("maxxen_github_token", githubToken);
     ls("maxxen_vercel_token", vercelToken);
     ls("maxxen_vercel_project", vercelProject);
@@ -110,10 +130,18 @@ export default function Settings() {
       <div className="max-w-5xl mx-auto p-6">
         <CStatus text={status} />
         {tab === "endpoint" && (
-          <CPanel title="Your AI endpoint — works with every provider" sub="Base URL + API key + Model ID. Saved per your login, restored on every device. OpenAI, Gemini (OpenAI-compatible URL), OpenRouter, Groq, DeepSeek, Ollama, anything.">
-            <CField placeholder="Base URL — e.g. https://api.openai.com/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} aria-label="Base URL" inputMode="url" />
+          <CPanel title="Your AI — ChatGPT, Claude or Gemini in one tap" sub="Tap a provider, paste the one key, done. Providers don't offer login-for-API, so one pasted key is the whole setup. Anything else works via custom URL + model ID.">
+            <div style={{ display: "flex", gap: 8 }}>
+              {["openai", "anthropic", "gemini"].map((id) => (
+                <CButton key={id} variant={provider === id ? "primary" : "ghost"} onClick={() => pickPreset(id)}>
+                  {id === "openai" ? "◈ ChatGPT" : id === "anthropic" ? "✶ Claude" : "⬢ Gemini"}
+                </CButton>
+              ))}
+            </div>
+            <CField placeholder="Base URL — e.g. https://api.openai.com/v1" value={baseURL} onChange={(e) => { setBaseURL(e.target.value); setProvider("custom"); }} aria-label="Base URL" inputMode="url" />
             <CField placeholder="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} aria-label="API key" type="password" autoComplete="off" />
             <CField placeholder="Model ID — e.g. gpt-4o-mini" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model ID" />
+            <p style={{ fontSize: 11, color: "var(--mx-meta)" }}>Key format: {PRESETS[provider]?.keyHint || "as issued by your provider"} · Editing URL/model switches to Custom.</p>
             <div><CButton onClick={saveSettings}>Save endpoint</CButton></div>
             <div><CButton variant="danger" onClick={() => void forgetAll()} disabled={forgetting}>{forgetting ? "Wiping…" : "Forget my vault"}</CButton></div>
             <p style={{ fontSize: 11, color: "var(--mx-meta)", lineHeight: 1.6 }}>How this works: preferences sync as plain text, keys as AES-256-GCM ciphertext — both in YOUR private maxxen-data repo, per login email. Only this app server can unlock the vault. Wipe it any time here.</p>
