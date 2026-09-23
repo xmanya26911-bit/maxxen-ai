@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pullVault } from "@/lib/sync";
 import "../landing.css";
@@ -20,6 +20,32 @@ export default function Login() {
   const [ticket, setTicket] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const googleBtn = useRef<HTMLDivElement>(null);
+  const googleDone = useRef(false);
+  const googleId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+
+  async function googleLogin(credential: string) {
+    if (!credential || busy) return;
+    setBusy(true);
+    setMsg("Verifying with Google…");
+    try {
+      const r = await fetch("/api/auth/google", { method: "POST", body: JSON.stringify({ credential }) });
+      const j = await r.json();
+      if (j.ok) {
+        ls("maxxen_session", j.session);
+        ls("maxxen_otp_email", j.email);
+        setMsg("Signed in — restoring your synced setup…");
+        try {
+          await pullVault(j.session);
+        } catch {
+        }
+        router.push("/chat");
+      } else setMsg(j.error || "Google sign-in failed");
+    } catch (e: any) {
+      setMsg(e.message || "Google sign-in failed");
+    }
+    setBusy(false);
+  }
 
   useEffect(() => {
     (async () => {
@@ -39,6 +65,38 @@ export default function Login() {
       setOtpSent(true);
     }
   }, [router]);
+
+  useEffect(() => {
+    if (!googleId || googleDone.current) return;
+    const init = () => {
+      const g = (window as any).google;
+      if (!g?.accounts?.id || !googleBtn.current || googleDone.current) return false;
+      googleDone.current = true;
+      g.accounts.id.initialize({
+        client_id: googleId,
+        callback: (res: any) => void googleLogin(res?.credential || ""),
+      });
+      g.accounts.id.renderButton(googleBtn.current, { theme: "filled_black", size: "large", width: 320, text: "continue_with" });
+      return true;
+    };
+    if (!document.querySelector("script[data-maxxen-gis]")) {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.async = true;
+      s.defer = true;
+      s.setAttribute("data-maxxen-gis", "1");
+      document.head.appendChild(s);
+    }
+    if (init()) return;
+    const t = window.setInterval(() => {
+      if (init()) window.clearInterval(t);
+    }, 300);
+    const stop = window.setTimeout(() => window.clearInterval(t), 12000);
+    return () => {
+      window.clearInterval(t);
+      window.clearTimeout(stop);
+    };
+  });
 
   async function sendOtp() {
     if (!email.trim() || busy) return;
@@ -100,6 +158,16 @@ export default function Login() {
           <span className="lp-mark" style={{ transform: "skewX(-18deg) scale(1.6)", margin: "0 auto" }}><i /><i /><i /></span>
           <h1>Welcome <em>back.</em></h1>
           <p>Passwordless login. Enter any email, grab the 6-digit code, done in seconds. Codes die after 10 minutes.</p>
+          {googleId ? (
+            <>
+              <div ref={googleBtn} style={{ display: "flex", justifyContent: "center", minHeight: 44 }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0 4px", color: "#5f5f66", fontSize: 11 }}>
+                <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
+                or continue with email
+                <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,.08)" }} />
+              </div>
+            </>
+          ) : null}
           <input className="lp-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (otpSent ? verifyOtp() : sendOtp())} aria-label="Email address" autoComplete="email" />
           {!otpSent ? (
             <button className="lp-go" onClick={sendOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Sending…" : "Send 6-digit code"}</button>
