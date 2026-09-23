@@ -21,7 +21,16 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (ls("maxxen_session")) router.replace("/chat");
+    (async () => {
+      const s = ls("maxxen_session");
+      if (!s) return;
+      try {
+        const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
+        if (r.ok) router.replace("/chat");
+        else ls("maxxen_session", "__DEL__");
+      } catch {
+      }
+    })();
     const saved = ls("maxxen_otp_email");
     if (saved) {
       setEmail(saved);
@@ -85,12 +94,12 @@ export default function Login() {
           <span className="lp-mark" style={{ transform: "skewX(-18deg) scale(1.6)", margin: "0 auto" }}><i /><i /><i /></span>
           <h1>Welcome <em>back.</em></h1>
           <p>Passwordless login. Enter any email, grab the 6-digit code, done in seconds. Codes die after 10 minutes.</p>
-          <input className="lp-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (otpSent ? verifyOtp() : sendOtp())} />
+          <input className="lp-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (otpSent ? verifyOtp() : sendOtp())} aria-label="Email address" autoComplete="email" />
           {!otpSent ? (
             <button className="lp-go" onClick={sendOtp} disabled={busy}>{busy ? "Sending…" : "Send 6-digit code"}</button>
           ) : (
             <>
-              <input className="lp-field otp" placeholder="○ ○ ○ ○ ○ ○" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} onKeyDown={(e) => e.key === "Enter" && verifyOtp()} />
+              <input className="lp-field otp" placeholder="○ ○ ○ ○ ○ ○" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} onKeyDown={(e) => e.key === "Enter" && verifyOtp()} aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" />
               <button className="lp-go" onClick={verifyOtp} disabled={busy}>{busy ? "Verifying…" : "Verify & enter →"}</button>
               <button className="lp-resend" onClick={sendOtp}>Resend code — older codes stop working</button>
             </>
