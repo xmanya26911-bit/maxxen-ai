@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { OTP_TTL_MS } from "./otp-store";
 
 // Stateless OTP tickets for serverless (Vercel runs each request on any
 // instance, so in-memory Maps don't survive). The ticket proves: this code
@@ -11,7 +12,7 @@ function key() {
   );
 }
 
-export function issueTicket(email: string, code: string, ttlMs = 10 * 60 * 1000) {
+export function issueTicket(email: string, code: string, ttlMs = OTP_TTL_MS) {
   const exp = Date.now() + ttlMs;
   const data = `${email.toLowerCase()}|${exp}|${code}`;
   const sig = crypto.createHmac("sha256", key()).update(data).digest("hex");

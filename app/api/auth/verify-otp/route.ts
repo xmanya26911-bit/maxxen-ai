@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { otpStore } from "@/lib/otp-store";
+import { otpStore, purgeExpired } from "@/lib/otp-store";
 import { checkTicket, ticketFreshFor } from "@/lib/otp-crypto";
 
 export async function POST(req: Request) {
@@ -12,7 +12,8 @@ export async function POST(req: Request) {
   };
   if (ticket && checkTicket(String(ticket), key, clean)) return done();
   if (ticket && ticketFreshFor(String(ticket), key))
-    return NextResponse.json({ error: "Incorrect code" }, { status: 401 });
+    return NextResponse.json({ error: "Incorrect code — use the code from your newest email (each new request replaces the old code)." }, { status: 401 });
+  purgeExpired();
   const entry = otpStore.get(key);
   if (!entry) return NextResponse.json({ error: "No code sent. Request a new one." }, { status: 400 });
   if (Date.now() > entry.expiresAt) {
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many attempts" }, { status: 429 });
   }
   if (entry.code !== clean) {
-    return NextResponse.json({ error: "Incorrect code" }, { status: 401 });
+    return NextResponse.json({ error: "Incorrect code — use the code from your newest email." }, { status: 401 });
   }
   return done();
 }
