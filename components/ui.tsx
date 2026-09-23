@@ -8,29 +8,25 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, R
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" };
 
 export function CButton({ variant = "primary", className = "", ...rest }: BtnProps) {
-  const base =
-    variant === "primary"
-      ? "btn-primary px-5 py-2"
-      : variant === "ghost"
-        ? "bg-white/10 px-5 py-2 rounded-xl hover:bg-white/15 transition"
-        : "bg-red-500/15 border border-red-400/30 text-red-200 px-5 py-2 rounded-xl hover:bg-red-500/25 transition";
-  return <button className={`${base} ${className}`} {...rest} />;
+  const base = variant === "primary" ? "mx-btn" : variant === "ghost" ? "mx-btn-ghost" : "mx-btn-ghost";
+  const danger = variant === "danger" ? { style: { color: "var(--mx-danger)", borderColor: "rgba(224,163,163,.35)" } } : {};
+  return <button className={`${base} ${className}`} {...danger} {...rest} />;
 }
 
 export function CField(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`input ${props.className || ""}`} {...props} />;
+  return <input className={`mx-field ${props.className || ""}`} {...props} />;
 }
 
 export function CSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`input ${props.className || ""}`} {...props} />;
+  return <select className={`mx-field ${props.className || ""}`} {...props} />;
 }
 
 export function CPanel({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
   return (
-    <div className="glass rounded-2xl p-6">
-      <h2 className="text-xl font-bold">{title}</h2>
-      {sub && <p className="text-white/60 text-sm mt-1">{sub}</p>}
-      <div className="mt-4 space-y-3">{children}</div>
+    <div className="mx-panel">
+      <h2>{title}</h2>
+      {sub && <p className="sub">{sub}</p>}
+      <div className="body">{children}</div>
     </div>
   );
 }
@@ -38,7 +34,7 @@ export function CPanel({ title, sub, children }: { title: string; sub?: string; 
 export function CStatus({ text }: { text: string }) {
   if (!text) return null;
   return (
-    <div className="glass p-3 rounded-xl mb-4 text-sm" role="status">
+    <div className="mx-status" role="status">
       {text}
     </div>
   );
