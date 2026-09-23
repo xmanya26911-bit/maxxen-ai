@@ -81,20 +81,20 @@ export default function Settings() {
     setChecking(false);
   }
 
-  if (!ready) return <main className="min-h-screen bg-[#07070f]" />;
+  if (!ready) return <main className="min-h-screen" style={{ background: "var(--mx-bg)" }} />;
 
   return (
-    <main className="min-h-screen bg-[#07070f] text-white">
+    <main className="min-h-screen text-white" style={{ background: "var(--mx-bg)" }}>
       <header className="border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <a href="/" className="font-black text-xl" style={{ textDecoration: "none", color: "inherit" }}>MAXXEN <span className="text-fuchsia-400">AI</span></a>
-          <a href="/chat" className="btn-primary px-4 py-1.5 text-sm" style={{ textDecoration: "none" }}>Open Chat →</a>
+          <a href="/" className="font-black text-xl" style={{ textDecoration: "none", color: "inherit" }}>MAXXEN <span style={{ color: "var(--mx-link)" }}>AI</span></a>
+          <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px" }}>Open Chat →</a>
         </div>
         <button onClick={() => { ls("maxxen_session", "__DEL__"); router.push("/login"); }} className="text-sm text-white/60 hover:text-white">Logout</button>
       </header>
       <nav className="flex gap-2 px-6 py-3 border-b border-white/10 overflow-x-auto" aria-label="Settings sections">
         {(["plugins", "storage", "hosting", "settings"] as Tab[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t} className={`px-4 py-2 rounded-lg capitalize text-sm ${tab === t ? "bg-violet-600" : "bg-white/5"}`}>{t}</button>
+          <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t} className="mx-tab" style={{ textTransform: "capitalize" }}>{t}</button>
         ))}
       </nav>
       <div className="max-w-5xl mx-auto p-6">
@@ -106,7 +106,7 @@ export default function Settings() {
               <CField placeholder="toolkit: gmail, github, notion..." value={toolkit} onChange={(e) => setToolkit(e.target.value)} aria-label="Toolkit name" />
               <CButton onClick={testComposio}>{checking ? "Checking…" : "Check"}</CButton>
             </div>
-            <a href="https://app.composio.dev" target="_blank" rel="noreferrer" className="text-fuchsia-300 text-sm underline inline-block">Open YOUR Composio dashboard</a>
+            <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)" }} className="text-sm underline inline-block">Open YOUR Composio dashboard</a>
             <div><CButton onClick={saveSettings}>Save</CButton></div>
           </CPanel>
         )}

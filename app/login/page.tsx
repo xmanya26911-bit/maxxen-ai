@@ -96,11 +96,11 @@ export default function Login() {
           <p>Passwordless login. Enter any email, grab the 6-digit code, done in seconds. Codes die after 10 minutes.</p>
           <input className="lp-field" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (otpSent ? verifyOtp() : sendOtp())} aria-label="Email address" autoComplete="email" />
           {!otpSent ? (
-            <button className="lp-go" onClick={sendOtp} disabled={busy}>{busy ? "Sending…" : "Send 6-digit code"}</button>
+            <button className="lp-go" onClick={sendOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Sending…" : "Send 6-digit code"}</button>
           ) : (
             <>
               <input className="lp-field otp" placeholder="○ ○ ○ ○ ○ ○" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} onKeyDown={(e) => e.key === "Enter" && verifyOtp()} aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" />
-              <button className="lp-go" onClick={verifyOtp} disabled={busy}>{busy ? "Verifying…" : "Verify & enter →"}</button>
+              <button className="lp-go" onClick={verifyOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Verifying…" : "Verify & enter →"}</button>
               <button className="lp-resend" onClick={sendOtp}>Resend code — older codes stop working</button>
             </>
           )}
