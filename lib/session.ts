@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import { OTP_TTL_MS } from "./otp-store";
-import { serverSecret } from "./session";
 
 // Single server-side secret primitive. Set OTP_SECRET in env for production;
 // falls back to the Gmail app password (already a high-entropy server secret).
