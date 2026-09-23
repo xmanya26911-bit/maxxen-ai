@@ -113,9 +113,13 @@ export default function Artifacts() {
   return (
     <main className="min-h-screen text-white" style={{ background: "var(--mx-bg)" }}>
       <header className="border-b border-white/10 px-6 py-4 flex items-center gap-4">
-        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>MAXXEN</a>
+        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>
+          MAXXEN
+        </a>
         <span style={{ color: "var(--mx-faint)", fontSize: 12 }}>/ artifacts</span>
-        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>Open Chat →</a>
+        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>
+          Open Chat →
+        </a>
       </header>
       <div className="max-w-5xl mx-auto p-6">
         <h2 style={{ fontSize: "var(--mx-h2)", margin: "8px 0 4px" }}>Generated artifacts</h2>
@@ -124,7 +128,13 @@ export default function Artifacts() {
           <div className="mx-panel">
             <h2>No artifacts yet</h2>
             <p className="sub">Ask Maxxen to build something in /chat — finished code collects here.</p>
-            <div className="body"><div><a href="/chat" className="mx-btn" style={{ textDecoration: "none" }}>Build something →</a></div></div>
+            <div className="body">
+              <div>
+                <a href="/chat" className="mx-btn" style={{ textDecoration: "none" }}>
+                  Build something →
+                </a>
+              </div>
+            </div>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
@@ -133,24 +143,66 @@ export default function Artifacts() {
                 {a.lang === "html" ? (
                   <HtmlFrame html={a.code} height={150} title={`artifact-${a.key}`} />
                 ) : (
-                  <pre style={{ margin: 0, height: 150, overflow: "hidden", padding: 12, fontSize: 10, lineHeight: 1.6, color: "#8d8d93", background: "rgba(0,0,0,.4)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, Menlo, monospace" }}>{a.code.slice(0, 600)}</pre>
+                  <pre
+                    style={{
+                      margin: 0,
+                      height: 150,
+                      overflow: "hidden",
+                      padding: 12,
+                      fontSize: 10,
+                      lineHeight: 1.6,
+                      color: "#8d8d93",
+                      background: "rgba(0,0,0,.4)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      fontFamily: "ui-monospace, Menlo, monospace",
+                    }}
+                  >
+                    {a.code.slice(0, 600)}
+                  </pre>
                 )}
                 <div style={{ padding: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.path || a.title} <span style={{ color: "var(--mx-meta)", fontWeight: 400 }}>·{a.lang}</span></div>
+                  <div style={{ fontSize: 13, fontWeight: 650, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {a.path || a.title} <span style={{ color: "var(--mx-meta)", fontWeight: 400 }}>·{a.lang}</span>
+                  </div>
                   <div style={{ fontSize: 11, color: "var(--mx-meta)", marginTop: 2 }}>{a.at ? timeAgo(a.at) : ""}</div>
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => setOpen(open === a.key ? null : a.key)}>{open === a.key ? "Close" : "View"}</button>
+                    <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => setOpen(open === a.key ? null : a.key)}>
+                      {open === a.key ? "Close" : "View"}
+                    </button>
                     {a.lang !== "html" && (
-                      <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => copy(a.code)}>Copy</button>
+                      <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => copy(a.code)}>
+                        Copy
+                      </button>
                     )}
-                    <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => openInChat(a.chatId)}>Open in chat</button>
+                    <button className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => openInChat(a.chatId)}>
+                      Open in chat
+                    </button>
                   </div>
                 </div>
-                {open === a.key && (a.lang === "html" ? (
-                  <HtmlFrame html={a.code} height={420} title={`artifact-full-${a.key}`} framed />
-                ) : (
-                  <pre style={{ margin: 0, maxHeight: 420, overflow: "auto", padding: 14, fontSize: 11, lineHeight: 1.6, color: "#c9c9cd", background: "rgba(0,0,0,.4)", borderTop: "1px solid var(--mx-border)", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, Menlo, monospace" }}>{a.code.slice(0, 20000)}</pre>
-                ))}
+                {open === a.key &&
+                  (a.lang === "html" ? (
+                    <HtmlFrame html={a.code} height={420} title={`artifact-full-${a.key}`} framed />
+                  ) : (
+                    <pre
+                      style={{
+                        margin: 0,
+                        maxHeight: 420,
+                        overflow: "auto",
+                        padding: 14,
+                        fontSize: 11,
+                        lineHeight: 1.6,
+                        color: "#c9c9cd",
+                        background: "rgba(0,0,0,.4)",
+                        borderTop: "1px solid var(--mx-border)",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        fontFamily: "ui-monospace, Menlo, monospace",
+                      }}
+                    >
+                      {a.code.slice(0, 20000)}
+                    </pre>
+                  ))}
               </div>
             ))}
           </div>
