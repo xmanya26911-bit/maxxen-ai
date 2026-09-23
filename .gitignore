@@ -1,0 +1,7 @@
+# Maxxen AI — never commit real secrets
+node_modules/
+.next/
+.env
+.env.local
+*.log
+.DS_Store
