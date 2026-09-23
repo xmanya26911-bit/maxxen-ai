@@ -48,25 +48,6 @@ export default function Login() {
   }
 
   useEffect(() => {
-    (async () => {
-      const s = ls("maxxen_session");
-      if (!s) return;
-      try {
-        const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
-        if (r.ok) router.replace("/chat");
-        else ls("maxxen_session", "__DEL__");
-      } catch {
-      }
-    })();
-    const saved = ls("maxxen_otp_email");
-    if (saved) {
-      setEmail(saved);
-      setTicket(ls("maxxen_otp_ticket"));
-      setOtpSent(true);
-    }
-  }, [router]);
-
-  useEffect(() => {
     if (!googleId || googleDone.current) return;
     const init = () => {
       const g = (window as any).google;
@@ -96,7 +77,26 @@ export default function Login() {
       window.clearInterval(t);
       window.clearTimeout(stop);
     };
-  });
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const s = ls("maxxen_session");
+      if (!s) return;
+      try {
+        const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
+        if (r.ok) router.replace("/chat");
+        else ls("maxxen_session", "__DEL__");
+      } catch {
+      }
+    })();
+    const saved = ls("maxxen_otp_email");
+    if (saved) {
+      setEmail(saved);
+      setTicket(ls("maxxen_otp_ticket"));
+      setOtpSent(true);
+    }
+  }, [router]);
 
   async function sendOtp() {
     if (!email.trim() || busy) return;
@@ -179,7 +179,7 @@ export default function Login() {
             </>
           )}
           {msg && <p className="lp-msg">{msg}</p>}
-          <p className="lp-fine">Codes arrive from xmanya26911@gmail.com.<br />Newest email always wins. Nothing is stored.</p>
+          <p className="lp-fine">Codes arrive from xmanya26911@gmail.com.<br />Newest email always wins. Passwords: never stored — preferences sync encrypted to YOUR repo.</p>
         </div>
       </div>
     </div>
