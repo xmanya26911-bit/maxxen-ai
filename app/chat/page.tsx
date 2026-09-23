@@ -3,8 +3,8 @@ import { memo, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { pushVault } from "@/lib/sync";
-import { apiPost } from "@/lib/api";
 import { useSession } from "@/lib/use-session";
+import { apiPost } from "@/lib/api";
 import "./chat-a.css";
 import "./chat-b.css";
 import "./chat-c.css";
@@ -99,6 +99,16 @@ export default function ChatPage() {
   const [fKey, setFKey] = useState("");
   const [fModel, setFModel] = useState("");
   const modelWrapRef = useRef<HTMLDivElement>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQ, setPaletteQ] = useState("");
+  const [paletteIdx, setPaletteIdx] = useState(0);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [activities, setActivities] = useState<string[]>([]);
+  const [agentActive, setAgentActive] = useState(false);
+  const [deployInfo, setDeployInfo] = useState<{ id: string; url: string } | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
+  const transcriptRef = useRef<any[]>([]);
 
   const cleanChats = (v: unknown): SavedChat[] => {
     if (!Array.isArray(v)) return [];
@@ -244,6 +254,235 @@ export default function ChatPage() {
   };
 
   const stop = () => abortRef.current?.abort();
+
+  type Cmd = { id: string; title: string; hint: string; run: () => void };
+  const commands: Cmd[] = [
+    { id: "new-chat", title: "New chat", hint: "start fresh", run: () => newChat() },
+    { id: "regen", title: "Regenerate last response", hint: "re-run", run: () => void regenerate() },
+    { id: "deploy", title: "Deploy latest build", hint: "vercel", run: () => void deployLatest() },
+    { id: "endpoint", title: "Change AI endpoint", hint: "model", run: () => setModelOpen(true) },
+    { id: "context", title: "Toggle context panel", hint: "panel", run: () => setContextOpen((v) => !v) },
+    { id: "go-projects", title: "Go to Projects", hint: "nav", run: () => router.push("/projects") },
+    { id: "go-artifacts", title: "Go to Artifacts", hint: "nav", run: () => router.push("/artifacts") },
+    { id: "go-agents", title: "Go to Agents", hint: "nav", run: () => router.push("/agents") },
+    { id: "go-plugins", title: "Go to Plugins", hint: "nav", run: () => router.push("/plugins") },
+    { id: "go-settings", title: "Go to Settings", hint: "nav", run: () => router.push("/settings") },
+    { id: "go-home", title: "Go to Home", hint: "nav", run: () => router.push("/") },
+  ];
+  const paletteHits = commands.filter(
+    (c) => !paletteQ.trim() || `${c.title} ${c.hint}`.toLowerCase().includes(paletteQ.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteQ("");
+        setPaletteIdx(0);
+        setPaletteOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const runPalette = (c: Cmd) => {
+    setPaletteOpen(false);
+    setPaletteQ("");
+    c.run();
+  };
+
+  const searchHits = searchQ.trim()
+    ? recent.filter((c) => `${c.title}`.toLowerCase().includes(searchQ.trim().toLowerCase())).slice(0, 6)
+    : [];
+
+  const pushActivity = (line: string) =>
+    setActivities((prev) => [...prev.slice(-29), line]);
+
+  // REAL agent loop client: streams activity events + final text from
+  // /api/agent/run, which executes registry tools as the caller.
+  const runAgent = async (userText: string, extraHistory?: Msg[]) => {
+    const key = ls("maxxen_apikey");
+    const base = ls("maxxen_baseurl");
+    const mid = ls("maxxen_model");
+    if (!key || !mid) {
+      setStatus("Set your Base URL + API key + Model ID in the model menu (top bar) or /settings first.");
+      return;
+    }
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setSending(true);
+    setAgentActive(true);
+    setActivities([]);
+    setStatus("");
+    const history = [...(extraHistory || messages), { role: "user", content: userText, at: new Date().toISOString(), id: uid() } as Msg];
+    setMessages(history);
+    setPrompt("");
+    const asstId = uid();
+    setMessages((prev) => [...prev, { role: "assistant", content: "", at: new Date().toISOString(), id: asstId }]);
+    let acc = "";
+    try {
+      const r = await fetch("/api/agent/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          messages: history.map((m) => ({ role: m.role, content: m.content })),
+          apiKey: key,
+          baseURL: base,
+          model: mid,
+          githubToken: ls("maxxen_github_token") || undefined,
+          vercelToken: ls("maxxen_vercel_token") || undefined,
+          composioKey: ls("maxxen_composio_key") || undefined,
+        }),
+        signal: ctrl.signal,
+      });
+      if (!r.ok || !r.body) {
+        const j = await r.json().catch(() => null);
+        throw new Error((j && j.error) || `Agent failed (HTTP ${r.status}).`);
+      }
+      transcriptRef.current = history.map((m) => ({ role: m.role, content: m.content }));
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() || "";
+        for (const part of parts) {
+          const line = part.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          let ev: any = null;
+          try {
+            ev = JSON.parse(line.slice(5));
+          } catch {
+            continue;
+          }
+          if (ev.error) throw new Error(ev.error);
+          if (ev.activity) pushActivity(`${ev.activity.phase === "error" ? "✗" : ev.activity.phase === "planning" ? "◌" : "✓"} ${ev.activity.text}`);
+          if (ev.needsConfirm) setPendingConfirm(String(ev.summary || "this action"));
+          if (typeof ev.delta === "string" && ev.delta) {
+            acc += ev.delta;
+            const snap = acc;
+            setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, content: snap } : m)));
+          }
+          if (ev.done) {
+            const blocks = extractBlocks(acc);
+            const html = blocks.find((b) => b.lang === "html")?.code;
+            setMessages((prev) => {
+              const doneMsgs = prev.map((m) =>
+                m.id === asstId ? { ...m, content: acc, blocks: blocks.length ? blocks : undefined, html } : m
+              );
+              persistRecent(doneMsgs, chatId);
+              return doneMsgs;
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      if (e?.name === "AbortError" || ctrl.signal.aborted) {
+        setStatus("Stopped — partial work kept.");
+        pushActivity("■ Stopped by user — partial work kept");
+      } else {
+        setStatus(e.message || "Agent failed");
+        setMessages((prev) => prev.filter((m) => m.id !== asstId));
+      }
+    } finally {
+      abortRef.current = null;
+      setSending(false);
+      setAgentActive(false);
+    }
+  };
+
+  // Confirm a deploy the agent proposed: re-run with explicit confirmation.
+  const confirmDeploy = async (summary: string) => {
+    setPendingConfirm(null);
+    setActivities([]);
+    await runAgent(`Confirmed: proceed with exactly this deployment and nothing else:\n${summary}`);
+  };
+
+  const regenerate = async () => {
+    if (sending) return;
+    const idx = [...messages].map((m) => m.role).lastIndexOf("assistant");
+    if (idx < 0) return;
+    const kept = messages.slice(0, idx);
+    const lastUser = [...kept].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    setMessages(kept);
+    setStatus("");
+    if (activeTool === "Agent") await runAgent(lastUser.content, kept);
+    else await runStream({ ...lastUser, id: uid(), at: new Date().toISOString() }, kept);
+  };
+
+  const resume = async () => {
+    if (sending) return;
+    setStatus("");
+    await runStream(
+      { role: "user", content: "Continue exactly where you left off — do not repeat, pick up mid-sentence if cut off.", at: new Date().toISOString(), id: uid() },
+      messages
+    );
+  };
+
+  // Deploy latest HTML build to the USER's Vercel project + poll to terminal.
+  const deployLatest = async () => {
+    const html = latestHtml;
+    const token = ls("maxxen_vercel_token");
+    const project = ls("maxxen_vercel_project") || "maxxen";
+    if (!html) {
+      setStatus("No HTML build in this chat yet — generate one first.");
+      return;
+    }
+    if (!token) {
+      setStatus("Paste YOUR Vercel token on /settings → Hosting first.");
+      return;
+    }
+    setStatus("Deploying to YOUR Vercel project…");
+    setDeployInfo(null);
+    try {
+      const r = await fetch("/api/vercel/deploy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ vercelToken: token, projectName: project, files: [{ file: "index.html", data: html }] }),
+      });
+      const j = await r.json();
+      if (j.error || !j.id) {
+        setStatus(j.error || "Deploy failed to start.");
+        return;
+      }
+      for (let i = 0; i < 36; i++) {
+        await new Promise((res) => setTimeout(res, 5000));
+        try {
+          const s = await fetch("/api/vercel/status", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ vercelToken: token, deploymentId: j.id }),
+          });
+          const st = await s.json();
+          if (st.error) {
+            setStatus(`Deploy ${j.id}: status check failed — ${st.error}`);
+            return;
+          }
+          if (["READY", "ERROR", "CANCELED"].includes(st.state)) {
+            if (st.state === "READY") {
+              setDeployInfo({ id: j.id, url: `https://${st.url || j.url}` });
+              setStatus(`Live ✓ https://${st.url || j.url}`);
+            } else {
+              setStatus(`Deploy ${st.state.toLowerCase()} — check your Vercel dashboard for logs.`);
+            }
+            return;
+          }
+          setStatus(`Deploying… ${st.state || "working"} (${i + 1})`);
+        } catch {
+          /* transient — keep polling */
+        }
+      }
+      setStatus(`Still working after ~3 min — track ${j.id} in your Vercel dashboard.`);
+    } catch (e: any) {
+      setStatus(e.message || "Deploy failed.");
+    }
+  };
 
   const runStream = async (userMsg: Msg, attemptMsgs: Msg[]) => {
     const key = ls("maxxen_apikey");
@@ -454,9 +693,70 @@ export default function ChatPage() {
         <button className="new-chat" onClick={newChat}>
           <Icon name="plus" /> New chat <kbd>⌘ K</kbd>
         </button>
-        <button className="search" onClick={() => setActiveNav("Chats")}>
+        <button
+          className="search"
+          onClick={() => {
+            setSearchOpen((v) => !v);
+            setSearchQ("");
+          }}
+          aria-expanded={searchOpen}
+          aria-label="Search chats"
+        >
           <Icon name="search" /> Search <kbd>⌘ /</kbd>
         </button>
+        {searchOpen && (
+          <div style={{ padding: "0 0 8px" }}>
+            <input
+              autoFocus
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchOpen(false);
+                  setSearchQ("");
+                }
+                if (e.key === "Enter" && searchHits.length) {
+                  openChat(searchHits[0]);
+                  setSearchOpen(false);
+                  setSearchQ("");
+                }
+              }}
+              placeholder="Filter chats… (Enter opens, Esc closes)"
+              aria-label="Filter recent chats"
+              style={{
+                width: "100%",
+                background: "rgba(0,0,0,.4)",
+                border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 7,
+                padding: "8px 10px",
+                color: "#eee",
+                fontSize: 11,
+                outline: "none",
+              }}
+            />
+            {searchQ.trim() ? (
+              searchHits.length ? (
+                <div style={{ display: "grid", gap: 2, marginTop: 6 }}>
+                  {searchHits.map((c) => (
+                    <button
+                      key={c.id}
+                      className="nav-item"
+                      onClick={() => {
+                        openChat(c);
+                        setSearchOpen(false);
+                        setSearchQ("");
+                      }}
+                    >
+                      {c.title}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: 10, color: "#5f5f66", padding: "6px 2px 0" }}>No chats match “{searchQ.trim()}”.</p>
+              )
+            ) : null}
+          </div>
+        )}
         <nav>
           {["Home", "Chats", "Projects", "Artifacts", "Agents", "Plugins"].map((item, i) => (
             <Link key={item} href={NAV_HREF[item]} className={`nav-item ${item === "Chats" ? "active" : ""}`} style={{ textDecoration: "none" }}>
@@ -735,6 +1035,95 @@ export default function ChatPage() {
         </div>
 
         <div className="composer-zone">
+          {pendingConfirm && (
+            <div
+              role="alertdialog"
+              aria-label="Confirm deployment"
+              style={{
+                width: "min(810px,100%)",
+                marginBottom: 10,
+                border: "1px solid rgba(227,207,158,.4)",
+                borderRadius: 12,
+                padding: "12px 14px",
+                background: "rgba(30,26,14,.85)",
+                fontSize: 12,
+                lineHeight: 1.55,
+              }}
+            >
+              <b>Agent requests deploy approval</b>
+              <div style={{ color: "#c9c9cd", marginTop: 4 }}>{pendingConfirm.slice(0, 400)}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button
+                  className="quiet-button"
+                  onClick={() => {
+                    const s = pendingConfirm;
+                    setPendingConfirm(null);
+                    void confirmDeploy(s);
+                  }}
+                >
+                  Confirm deploy →
+                </button>
+                <button
+                  className="quiet-button"
+                  onClick={() => {
+                    setPendingConfirm(null);
+                    setStatus("Deploy declined — nothing was shipped.");
+                  }}
+                >
+                  Decline
+                </button>
+              </div>
+            </div>
+          )}
+          {(agentActive || activities.length > 0) && (
+            <div
+              aria-live="polite"
+              style={{
+                width: "min(810px,100%)",
+                marginBottom: 10,
+                border: "1px solid rgba(255,255,255,.08)",
+                borderRadius: 12,
+                padding: "10px 14px",
+                background: "rgba(10,10,14,.8)",
+                fontSize: 11,
+                display: "grid",
+                gap: 5,
+                maxHeight: 150,
+                overflow: "auto",
+              }}
+            >
+              {activities.slice(-8).map((a, i) => (
+                <div key={`${i}-${a.slice(0, 24)}`} style={{ color: a.startsWith("✗") ? "#e0a3a3" : a.startsWith("■") ? "#e3cf9e" : "#9aa5b8" }}>
+                  {a}
+                </div>
+              ))}
+              {agentActive && <div style={{ color: "#98a5b8" }}>◌ working…</div>}
+            </div>
+          )}
+          {deployInfo && (
+            <div style={{ width: "min(810px,100%)", marginBottom: 10, fontSize: 12 }}>
+              <a href={deployInfo.url} target="_blank" rel="noreferrer" style={{ color: "#b9d0ff" }}>
+                Live ✓ {deployInfo.url}
+              </a>
+            </div>
+          )}
+          {hasMessages && !sending && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, width: "min(810px,100%)" }}>
+              <button className="quiet-button" style={{ fontSize: 11 }} onClick={() => void regenerate()}>
+                Regenerate
+              </button>
+              {status.startsWith("Stopped") && (
+                <button className="quiet-button" style={{ fontSize: 11 }} onClick={() => void resume()}>
+                  Resume
+                </button>
+              )}
+              {latestHtml && (
+                <button className="quiet-button" style={{ fontSize: 11 }} onClick={() => void deployLatest()}>
+                  Deploy latest
+                </button>
+              )}
+            </div>
+          )}
           <div className="tool-strip">
             {tools.map((tool) => (
               <button key={tool} className={activeTool === tool ? "chosen" : ""} onClick={() => setActiveTool(tool)}>
@@ -844,6 +1233,90 @@ export default function ChatPage() {
         <button className="context-reveal" onClick={() => setContextOpen(true)}>
           Context
         </button>
+      )}
+      {paletteOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPaletteOpen(false);
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(0,0,0,.55)",
+            display: "grid",
+            justifyItems: "center",
+            alignContent: "start",
+            paddingTop: "14vh",
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 92vw)",
+              border: "1px solid rgba(255,255,255,.12)",
+              borderRadius: 14,
+              background: "rgba(17,17,22,.97)",
+              boxShadow: "0 30px 90px rgba(0,0,0,.7)",
+              overflow: "hidden",
+            }}
+          >
+            <input
+              autoFocus
+              value={paletteQ}
+              onChange={(e) => {
+                setPaletteQ(e.target.value);
+                setPaletteIdx(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setPaletteOpen(false);
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setPaletteIdx((i) => Math.min(i + 1, paletteHits.length - 1));
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setPaletteIdx((i) => Math.max(i - 1, 0));
+                }
+                if (e.key === "Enter" && paletteHits[paletteIdx]) {
+                  e.preventDefault();
+                  runPalette(paletteHits[paletteIdx]);
+                }
+              }}
+              placeholder="Type a command… (Esc closes)"
+              aria-label="Command palette"
+              style={{ width: "100%", background: "transparent", border: 0, borderBottom: "1px solid rgba(255,255,255,.08)", padding: "14px 16px", color: "#eee", fontSize: 14, outline: "none" }}
+            />
+            <div style={{ maxHeight: 300, overflow: "auto", padding: 6 }}>
+              {paletteHits.length === 0 && <p style={{ fontSize: 12, color: "#5f5f66", padding: "10px 12px" }}>No matching commands.</p>}
+              {paletteHits.map((c, i) => (
+                <button
+                  key={c.id}
+                  onClick={() => runPalette(c)}
+                  onMouseEnter={() => setPaletteIdx(i)}
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    alignItems: "center",
+                    gap: 10,
+                    border: 0,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    fontSize: 13,
+                    textAlign: "left",
+                    background: i === paletteIdx ? "rgba(203,220,255,.09)" : "transparent",
+                    color: i === paletteIdx ? "#fff" : "#bcbcc0",
+                  }}
+                >
+                  <span style={{ flex: 1 }}>{c.title}</span>
+                  <span style={{ fontSize: 10, color: "#5f5f66" }}>{c.hint}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
