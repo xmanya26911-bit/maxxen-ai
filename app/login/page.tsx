@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { pullVault } from "@/lib/sync";
 import "../landing.css";
 
 const ls = (k: string, v?: string) => {
@@ -70,6 +71,11 @@ export default function Login() {
         ls("maxxen_otp_ticket", "__DEL__");
         ls("maxxen_otp_email", "__DEL__");
         ls("maxxen_session", j.session);
+        setMsg("Signed in — restoring your synced setup…");
+        try {
+          await pullVault(j.session);
+        } catch {
+        }
         router.push("/chat");
       } else setMsg(j.error || "Incorrect code");
     } catch (e: any) {
