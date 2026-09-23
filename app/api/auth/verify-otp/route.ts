@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { otpStore, purgeExpired } from "@/lib/otp-store";
 import { checkTicket, ticketFreshFor } from "@/lib/otp-crypto";
+import { signSession } from "@/lib/session";
 
 export async function POST(req: Request) {
   const { email, code, ticket } = await req.json();
@@ -8,7 +9,7 @@ export async function POST(req: Request) {
   const clean = String(code ?? "").trim();
   const done = () => {
     otpStore.delete(key);
-    return NextResponse.json({ ok: true, email: key, session: Buffer.from(`${key}:${Date.now()}`).toString("base64") });
+    return NextResponse.json({ ok: true, email: key, session: signSession(key) });
   };
   if (ticket && checkTicket(String(ticket), key, clean)) return done();
   if (ticket && ticketFreshFor(String(ticket), key))

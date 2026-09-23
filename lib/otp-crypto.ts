@@ -1,15 +1,12 @@
 import crypto from "crypto";
 import { OTP_TTL_MS } from "./otp-store";
+import { serverSecret } from "./session";
 
 // Stateless OTP tickets for serverless (Vercel runs each request on any
 // instance, so in-memory Maps don't survive). The ticket proves: this code
 // was issued for this email and hasn't expired — verified by HMAC, no DB.
 function key() {
-  return (
-    process.env.OTP_SECRET ||
-    (process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "") ||
-    "maxxen-dev-only"
-  );
+  return serverSecret();
 }
 
 export function issueTicket(email: string, code: string, ttlMs = OTP_TTL_MS) {
