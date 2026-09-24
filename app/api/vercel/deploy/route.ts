@@ -44,13 +44,15 @@ export async function POST(req: Request) {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const detail = (j as any)?.error?.message || JSON.stringify(j).slice(0, 500);
+      const rawErr = (j as any)?.error?.message ?? (j as any)?.error ?? j;
+      const detail = typeof rawErr === "string" ? rawErr : JSON.stringify(rawErr).slice(0, 500);
       return NextResponse.json({ error: `Vercel refused the deploy (HTTP ${r.status}): ${detail}` }, { status: 502 });
     }
     return NextResponse.json({
       ok: true,
       id: (j as any).id,
       url: (j as any).url,
+      inspectorUrl: `https://vercel.com/dashboard`,
       status: (j as any).readyState || (j as any).status || "QUEUED",
     });
   } catch (e: any) {
