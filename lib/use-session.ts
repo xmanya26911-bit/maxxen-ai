@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 
 // Single shared session gate. Returns { ready, email } — ready flips true
 // only after the server cryptographically validated the session.
+// Redirects to /login on missing/invalid/expired sessions.
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
   if (v === undefined) return localStorage.getItem(k) || "";
