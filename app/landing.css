@@ -36,6 +36,7 @@
 .lp button { font: inherit; cursor: pointer; }
 .lp ::selection { background: #e4eaff; color: #08080a; }
 
+/* ---------- nav ---------- */
 .lp-nav {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -69,6 +70,7 @@
 .lp-cta.ghost { background: transparent; color: #e4e7ec; border: 1px solid var(--line); box-shadow: none; }
 .lp-cta.ghost:hover { background: rgba(255,255,255,.06); box-shadow: none; }
 
+/* ---------- hero ---------- */
 .lp-hero { position: relative; padding: 178px clamp(18px, 6vw, 90px) 90px; text-align: center; overflow: hidden; }
 .lp-eyebrow { margin: 0 0 26px; color: #77777e; font-size: 11px; font-weight: 700; letter-spacing: .28em; animation: lp-rise .7s cubic-bezier(.2,.8,.2,1) both; }
 .lp-eyebrow b { color: #b9c9e7; font-weight: 700; }
@@ -104,12 +106,14 @@
 @keyframes lp-f1 { 50% { transform: translate3d(0,-12px,0); } }
 @keyframes lp-f2 { 50% { transform: translate3d(7px,10px,0); } }
 
+/* ---------- marquee ---------- */
 .lp-marquee { border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); overflow: hidden; padding: 20px 0; background: rgba(255,255,255,.012); }
 .lp-marquee-track { display: flex; gap: 54px; width: max-content; animation: lp-scroll 30s linear infinite; }
 .lp-marquee span { font-size: 13px; font-weight: 800; letter-spacing: .3em; color: #3f3f45; white-space: nowrap; }
 .lp-marquee span i { font-family: 'Bodoni Moda', Georgia, serif; font-style: italic; letter-spacing: .1em; color: #565660; }
 @keyframes lp-scroll { to { transform: translateX(-50%); } }
 
+/* ---------- sections ---------- */
 .lp-section { padding: clamp(80px, 10vw, 150px) clamp(18px, 6vw, 90px); max-width: 1180px; margin: auto; }
 .lp-kicker { margin: 0 0 18px; color: #68686f; font-size: 10px; font-weight: 700; letter-spacing: .24em; }
 .lp-h2 { margin: 0 0 18px; font-size: clamp(34px, 4.6vw, 64px); line-height: .95; letter-spacing: -.06em; font-weight: 800; text-wrap: balance; }
@@ -129,6 +133,7 @@
 .lp-card p { margin: 0; color: #8d8d93; font-size: 13px; line-height: 1.65; }
 .lp-card code { color: #b9c9e7; font-size: 12px; }
 
+/* ---------- steps ---------- */
 .lp-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: step; }
 .lp-step { border: 1px solid var(--soft-line); border-radius: 18px; padding: 34px 28px; background: rgba(255,255,255,.018); position: relative; transition: .25s; }
 .lp-step:hover { border-color: rgba(207,222,255,.25); transform: translateY(-4px); }
@@ -137,6 +142,7 @@
 .lp-step p { margin: 0; color: #8d8d93; font-size: 13px; line-height: 1.65; }
 .lp-step p code { color: #b9c9e7; font-size: 12px; }
 
+/* ---------- security band ---------- */
 .lp-band { border-top: 1px solid var(--soft-line); border-bottom: 1px solid var(--soft-line); background: linear-gradient(120deg, rgba(120,140,180,.06), rgba(255,255,255,.015)); }
 .lp-band-inner { max-width: 1180px; margin: auto; padding: clamp(60px, 8vw, 110px) clamp(18px, 6vw, 90px); display: grid; grid-template-columns: 1.1fr 1fr; gap: 60px; align-items: center; }
 .lp-checks { display: grid; gap: 16px; margin-top: 30px; }
@@ -152,6 +158,7 @@
 .lp-terminal pre .c { color: #5f5f66; }
 .lp-terminal pre .g { color: #b9d8bd; }
 
+/* ---------- builder teaser ---------- */
 .lp-teaser { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; background: linear-gradient(160deg, #101014, #08080a); box-shadow: 0 50px 120px rgba(0,0,0,.55); }
 .lp-teaser-bar { display: flex; align-items: center; gap: 10px; padding: 16px 22px; border-bottom: 1px solid var(--soft-line); font-size: 11px; color: #85858b; }
 .lp-teaser-bar .dots { display: flex; gap: 6px; }
@@ -167,6 +174,7 @@
 .lp-teaser-shot strong i { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 500; }
 .lp-teaser-shot span { font-size: 10px; color: rgba(255,255,255,.65); border: 1px solid rgba(255,255,255,.25); align-self: flex-start; padding: 7px 13px; border-radius: 999px; }
 
+/* ---------- faq ---------- */
 .lp-faq { display: grid; gap: 10px; margin-top: 44px; }
 .lp-faq details { border: 1px solid var(--soft-line); border-radius: 14px; background: rgba(255,255,255,.018); padding: 0 24px; transition: .2s; }
 .lp-faq details[open] { border-color: rgba(207,222,255,.22); background: rgba(255,255,255,.03); }
@@ -176,6 +184,7 @@
 .lp-faq details p { margin: 0 0 24px; color: #8d8d93; font-size: 13.5px; line-height: 1.7; max-width: 640px; }
 .lp-faq details p code { color: #b9c9e7; }
 
+/* ---------- final + footer ---------- */
 .lp-final { text-align: center; padding: clamp(90px, 11vw, 160px) 20px; position: relative; overflow: hidden; }
 .lp-final h2 { margin: 0 0 20px; font-size: clamp(44px, 7vw, 110px); line-height: .85; letter-spacing: -.08em; font-weight: 900; }
 .lp-final h2 em { font-family: 'Bodoni Moda', Georgia, serif; font-weight: 500; font-style: italic; color: #e7e3e1; }
@@ -187,9 +196,11 @@
 .lp-footer a:hover { color: #fff; background: var(--glass); }
 .lp-footer span:last-child { margin-left: auto; }
 
+/* ---------- reveal ---------- */
 .lp-reveal { opacity: 0; transform: translateY(26px); transition: opacity .8s cubic-bezier(.2,.8,.2,1), transform .8s cubic-bezier(.2,.8,.2,1); }
 .lp-reveal.in { opacity: 1; transform: none; }
 
+/* ---------- login ---------- */
 .lp-login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 100px 18px 60px; position: relative; }
 .lp-card-glass { width: min(440px, 100%); border: 1px solid var(--line); border-radius: 26px; padding: 46px 42px; background: linear-gradient(160deg, rgba(30,30,36,.72), rgba(9,9,12,.9)); box-shadow: 0 40px 100px rgba(0,0,0,.55); backdrop-filter: blur(30px); text-align: center; animation: lp-rise .7s cubic-bezier(.2,.8,.2,1) both; }
 .lp-card-glass h1 { margin: 14px 0 10px; font-size: 34px; font-weight: 900; letter-spacing: -.05em; }
@@ -213,4 +224,10 @@
   .lp-stats { gap: 22px; }
   .lp-footer { flex-wrap: wrap; }
   .lp-footer span:last-child { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-reveal, .lp-eyebrow, .lp-hero h1, .lp-sub, .lp-hero-cta, .lp-stats, .lp-card-glass { animation: none; opacity: 1; transform: none; }
+  .lp-reveal { transition: none; }
+  .lp-marquee-track, .lp-orb { animation: none; }
 }
