@@ -34,10 +34,17 @@ export default function Agents() {
   useEffect(() => {
     (async () => {
       const s = ls("maxxen_session");
-      if (!s) { router.replace("/login"); return; }
+      if (!s) {
+        router.replace("/login");
+        return;
+      }
       try {
         const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
-        if (!r.ok) { ls("maxxen_session", "__DEL__"); router.replace("/login"); return; }
+        if (!r.ok) {
+          ls("maxxen_session", "__DEL__");
+          router.replace("/login");
+          return;
+        }
       } catch {
         router.replace("/login");
         return;
@@ -47,6 +54,7 @@ export default function Agents() {
       setReady(true);
       if (saved) void refresh(saved);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   async function refresh(k?: string) {
@@ -81,21 +89,31 @@ export default function Agents() {
   return (
     <main className="min-h-screen text-white" style={{ background: "var(--mx-bg)" }}>
       <header className="border-b border-white/10 px-6 py-4 flex items-center gap-4">
-        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>MAXXEN</a>
+        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>
+          MAXXEN
+        </a>
         <span style={{ color: "var(--mx-faint)", fontSize: 12 }}>/ agents</span>
-        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>Open Chat →</a>
+        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>
+          Open Chat →
+        </a>
       </header>
       <div className="max-w-5xl mx-auto p-6">
         <h2 style={{ fontSize: "var(--mx-h2)", margin: "8px 0 4px" }}>Your agents</h2>
         <p style={{ color: "var(--mx-muted)", fontSize: 13, margin: "0 0 16px" }}>Every toolkit you connected in YOUR Composio acts as an agent. Nothing here is shared.</p>
-        {status && <div className="mx-status" role="status">{status}</div>}
+        {status && (
+          <div className="mx-status" role="status">
+            {status}
+          </div>
+        )}
         <div className="mx-panel">
           <h2>Composio key</h2>
           <p className="sub">Stored only in your browser.</p>
           <div className="body">
             <div className="flex gap-2">
               <input className="mx-field" placeholder="YOUR Composio API key" value={key} onChange={(e) => setKey(e.target.value)} aria-label="Composio API key" />
-              <button className="mx-btn" onClick={() => void refresh()} disabled={loading}>{loading ? "Reading…" : "Refresh"}</button>
+              <button className="mx-btn" onClick={() => void refresh()} disabled={loading}>
+                {loading ? "Reading…" : "Refresh"}
+              </button>
             </div>
           </div>
         </div>
@@ -106,9 +124,14 @@ export default function Agents() {
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--mx-success)", boxShadow: "0 0 8px rgba(185,216,189,.7)" }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 650 }}>{a.app}</div>
-                  <div style={{ fontSize: 11, color: "var(--mx-meta)" }}>{a.status}{a.created ? ` · since ${a.created.slice(0, 10)}` : ""} · {a.id.slice(0, 18)}</div>
+                  <div style={{ fontSize: 11, color: "var(--mx-meta)" }}>
+                    {a.status}
+                    {a.created ? ` · since ${a.created.slice(0, 10)}` : ""} · {a.id.slice(0, 18)}
+                  </div>
                 </div>
-                <a href="/chat" style={{ color: "var(--mx-link)", fontSize: 12 }}>Use in chat →</a>
+                <a href="/chat" style={{ color: "var(--mx-link)", fontSize: 12 }}>
+                  Use in chat →
+                </a>
               </div>
             ))}
           </div>
@@ -116,7 +139,9 @@ export default function Agents() {
         {accounts !== null && accounts.length === 0 && !loading && (
           <div className="mx-panel" style={{ marginTop: 16 }}>
             <h2>No agents connected</h2>
-            <p className="sub">Open <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)" }}>app.composio.dev</a> with YOUR key, connect Gmail, GitHub, Notion or Slack — then hit Refresh.</p>
+            <p className="sub">
+              Open <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)" }}>app.composio.dev</a> with YOUR key, connect Gmail, GitHub, Notion or Slack — then hit Refresh.
+            </p>
           </div>
         )}
       </div>
