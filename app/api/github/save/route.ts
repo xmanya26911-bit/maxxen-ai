@@ -4,8 +4,10 @@ import { Octokit } from "octokit";
 // Writes to the calling USER's own maxxen-data repo (derived from THEIR token).
 // Body: { githubToken, path, content (object|string), message }
 // Guards:
-// - path allowlist: builds/, chats/, settings.json only; rejects traversal.
-// - 404 on lookup = create; any other lookup failure surfaces.
+// - path allowlist: builds/, chats/, settings.json (+ vault path) only;
+//   rejects absolute paths and ".." traversal.
+// - 404 on lookup = create; any other lookup failure surfaces (never blind
+//   overwrites).
 // - SHA conflicts retried 3x with a fresh SHA.
 // - repo auto-create tolerates an already-exists race.
 const ALLOWED = [/^builds\//, /^chats\//, /^settings\.json$/];
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
         try {
           await oct.rest.repos.createForAuthenticatedUser({ name: repo, private: true, description: "Maxxen AI user storage" });
         } catch (c: any) {
-          if (c?.status !== 422) throw c;
+          if (c?.status !== 422) throw c; // 422 = lost a creation race; repo exists now
         }
       } else throw e;
     }
@@ -54,7 +56,7 @@ export async function POST(req: Request) {
         const cur = await oct.rest.repos.getContent({ owner: me.login, repo, path: safePath });
         if (!Array.isArray(cur.data) && cur.data.type === "file") sha = cur.data.sha;
       } catch (e: any) {
-        if (e?.status === 404) sha = undefined;
+        if (e?.status === 404) sha = undefined; // genuinely missing → create
         else throw new Error(`Couldn't read existing file: ${e?.message || e}`);
       }
       try {
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, repo: `${me.login}/${repo}`, path: safePath });
       } catch (e: any) {
         const msg = String(e?.message || "");
-        if (/sha|conflict|422/i.test(msg) && attempt < 2) continue;
+        if (/sha|conflict|422/i.test(msg) && attempt < 2) continue; // stale SHA — refetch and retry
         throw e;
       }
     }
