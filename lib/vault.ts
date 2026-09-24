@@ -55,10 +55,12 @@ export type StoredSettings = {
   vault?: VaultPacket | null;
 };
 
+const BLOCKED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 export function sanitizePrefs(input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!input || typeof input !== "object") return out;
   for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+    if (BLOCKED_KEYS.has(k)) continue;
     if (typeof v === "string" && v.length < 4000 && /^[a-zA-Z0-9_]+$/.test(k)) out[k] = v;
   }
   return out;
