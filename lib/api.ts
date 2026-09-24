@@ -1,8 +1,8 @@
 "use client";
 
-// Centralized API client: JSON POST with timeout, consistent errors.
-// Pages should use this instead of raw fetch so timeouts and error shapes
-// behave the same everywhere.
+// Centralized API client: JSON POST with timeout, consistent errors, and an
+// explicit session model. Pages should use this instead of raw fetch so auth
+// failures, timeouts and error shapes behave the same everywhere.
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
