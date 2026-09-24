@@ -12,7 +12,10 @@ import { assertSafeBaseURL } from "./net-guard";
 //   require confirm:true too.
 
 export type Permission = "read" | "write" | "deploy" | "external";
-export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string };
+// userConfirmed must come from an explicit human gesture (UI "Confirm" button →
+// "Confirmed:" user message), NEVER from model-supplied tool args. The agent
+// loop strips args.confirm before execution — see app/api/agent/run.
+export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean };
 
 export type ToolResult = { ok: boolean; summary: string; data?: unknown; error?: string; needsConfirm?: boolean };
 
@@ -52,8 +55,9 @@ export const registry: ToolDef[] = [
     parameters: { path: "string, optional directory (default '')" },
     run: async (args, ctx) => {
       const token = need(ctx.githubToken, "GitHub token");
-      const path = typeof args.path === "string" ? args.path.replace(/^\/+/, "") : "";
-      if (path.includes("..")) return { ok: false, summary: "Invalid path." };
+      const { cleanGithubPath } = await import("./github-guard");
+      const path = cleanGithubPath(typeof args.path === "string" ? args.path : "", { allowRoot: true });
+      if (path === null) return { ok: false, summary: "Invalid path — list limited to root, builds/, chats/, settings.json." };
       const oct = new Octokit({ auth: token });
       const { data: me } = await oct.rest.users.getAuthenticated();
       try {
@@ -74,7 +78,10 @@ export const registry: ToolDef[] = [
     parameters: { path: "string, e.g. builds/abc/index.html" },
     run: async (args, ctx) => {
       const token = need(ctx.githubToken, "GitHub token");
-      const path = need(args.path, "path");
+      const rawPath = need(args.path, "path");
+      const { cleanGithubPath } = await import("./github-guard");
+      const path = cleanGithubPath(rawPath);
+      if (!path) return { ok: false, summary: "Invalid path — reads limited to builds/, chats/, settings.json." };
       const oct = new Octokit({ auth: token });
       const { data: me } = await oct.rest.users.getAuthenticated();
       const f: any = await githubFile(me.login, "maxxen-data", oct, path);
@@ -165,7 +172,9 @@ export const registry: ToolDef[] = [
     description: "Deploy static files to the user's Vercel project. REQUIRES explicit user confirmation (confirm:true).",
     parameters: { project: "string project name", files: "[{file, data}] small site, 4MB cap", target: "'production'|'preview'", confirm: "must be true" },
     run: async (args, ctx) => {
-      if (args.confirm !== true) return { ok: false, summary: "Deployment needs explicit confirmation.", needsConfirm: true };
+      // Human-gated: model-supplied args.confirm is IGNORED (stripped in agent/run).
+      // Only ctx.userConfirmed (from explicit "Confirmed:" user message) allows deploy.
+      if (ctx.userConfirmed !== true) return { ok: false, summary: "Deployment needs explicit confirmation.", needsConfirm: true };
       const token = need(ctx.vercelToken, "Vercel token");
       const project = need(args.project, "project");
       const files = Array.isArray(args.files) ? args.files : [];
@@ -174,8 +183,10 @@ export const registry: ToolDef[] = [
       const clean: { file: string; data: string }[] = [];
       for (const f of files) {
         if (!f || typeof (f as any).file !== "string" || typeof (f as any).data !== "string") continue;
-        const name = (f as any).file.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\.\./g, "");
-        if (!name || name.length > 200) continue;
+        const rawName = (f as any).file.replace(/\\/g, "/").replace(/^\/+/, "");
+        if (!rawName || rawName.length > 200 || rawName.includes("..")) continue;
+        const name = rawName;
+        if (!name) continue;
         bytes += Buffer.byteLength((f as any).data, "utf8");
         if (bytes > 4 * 1024 * 1024) return { ok: false, summary: "Payload over 4MB." };
         clean.push({ file: name, data: (f as any).data });
@@ -207,8 +218,11 @@ export const registry: ToolDef[] = [
       const slug = need(args.tool, "tool slug");
       const params = args.params ?? {};
       if (params && (typeof params !== "object" || Array.isArray(params))) return { ok: false, summary: "params must be an object." };
-      const destructive = /send|delete|remove|create|update|publish|post/i.test(slug) || /send|delete|remove/i.test(JSON.stringify(params).slice(0, 500));
-      if (destructive && args.confirm !== true)
+      // Scan FULL payload (no 500-char slice bypass) + broader verbs.
+      const hay = `${slug} ${JSON.stringify(params)}`;
+      const destructive = /send|delete|remove|create|update|publish|post|forward|reply|archive|share|invite|trash/i.test(hay);
+      // Human-gated: ignore model-supplied args.confirm, require ctx.userConfirmed.
+      if (destructive && ctx.userConfirmed !== true)
         return { ok: false, summary: `“${slug}” changes the outside world — confirm explicitly first.`, needsConfirm: true };
       const payload: Record<string, unknown> = { tool_slug: slug, arguments: params };
       if (typeof args.connectedAccountId === "string" && args.connectedAccountId) payload.connected_account_id = args.connectedAccountId;
