@@ -4,25 +4,36 @@
    Landing + chat keep their own identities intentionally. */
 
 :root {
+  /* surfaces */
   --mx-bg: #07070d;
   --mx-surface: #0d0d14;
   --mx-surface-2: #12121a;
   --mx-surface-hover: rgba(255, 255, 255, 0.045);
+
+  /* borders — barely visible until needed */
   --mx-border: rgba(255, 255, 255, 0.08);
   --mx-border-strong: rgba(255, 255, 255, 0.14);
   --mx-border-focus: rgba(203, 220, 255, 0.45);
+
+  /* text hierarchy: primary / secondary / tertiary / metadata */
   --mx-fg: #f2f2ef;
   --mx-muted: #a3a3ab;
   --mx-faint: #6d6d75;
   --mx-meta: #52525a;
+
+  /* accent — used sparingly: primary actions, current state, links */
   --mx-accent: #dfe7f5;
   --mx-accent-ink: #101014;
   --mx-accent-dim: rgba(203, 220, 255, 0.1);
   --mx-link: #b9c9e7;
+
+  /* semantic */
   --mx-success: #b9d8bd;
   --mx-warning: #e3cf9e;
   --mx-danger: #e0a3a3;
   --mx-info: #b9c9e7;
+
+  /* type scale */
   --mx-display: clamp(34px, 4.6vw, 60px);
   --mx-h2: 20px;
   --mx-h3: 16px;
@@ -30,6 +41,8 @@
   --mx-label: 12px;
   --mx-meta-size: 11px;
   --mx-code-size: 12.5px;
+
+  /* spacing scale (4pt base) */
   --mx-1: 4px;
   --mx-2: 8px;
   --mx-3: 12px;
@@ -38,14 +51,19 @@
   --mx-6: 24px;
   --mx-8: 32px;
   --mx-12: 48px;
+
+  /* radii — three steps only */
   --mx-r-sm: 7px;
   --mx-r-md: 11px;
   --mx-r-lg: 16px;
+
+  /* motion — fast, subtle, consistent */
   --mx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --mx-fast: 120ms;
   --mx-med: 220ms;
 }
 
+/* quiet console button — replaces gradient violet primary */
 .mx-btn {
   display: inline-flex;
   align-items: center;
@@ -83,6 +101,7 @@
 .mx-btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
 .mx-btn-ghost:focus-visible { outline: 2px solid var(--mx-border-focus); outline-offset: 2px; }
 
+/* quiet field */
 .mx-field {
   width: 100%;
   background: rgba(0, 0, 0, 0.4);
@@ -99,6 +118,7 @@
 .mx-field:focus { border-color: var(--mx-border-focus); box-shadow: 0 0 0 3px rgba(202, 219, 255, 0.07); }
 .mx-field:disabled { opacity: 0.5; }
 
+/* quiet panel — tonal separation, hairline border, no glow */
 .mx-panel {
   background: linear-gradient(180deg, var(--mx-surface), rgba(13, 13, 20, 0.6));
   border: 1px solid var(--mx-border);
