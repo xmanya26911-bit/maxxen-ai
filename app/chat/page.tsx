@@ -600,6 +600,43 @@ export default function ChatPage() {
     setStatus("");
   };
 
+  const deleteChat = (id: string) => {
+    if (sending && id === chatId) {
+      setStatus("Stop the current generation before deleting this chat.");
+      return;
+    }
+    setRecent((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      safeSet("maxxen_chats", JSON.stringify(next));
+      return next;
+    });
+    if (id === chatId) {
+      setMessages([]);
+      setPrompt("");
+      setAttach(null);
+      setExpanded(null);
+      setChatId(String(Date.now()));
+      setStatus("Chat deleted.");
+    }
+  };
+
+  const clearAllChats = () => {
+    if (sending) {
+      setStatus("Stop the current generation before clearing chats.");
+      return;
+    }
+    if (!recent.length && !messages.length) return;
+    if (!window.confirm(`Delete all ${recent.length + (messages.length ? 1 : 0)} chats? This cannot be undone.`)) return;
+    safeSet("maxxen_chats", JSON.stringify([]));
+    setRecent([]);
+    setMessages([]);
+    setPrompt("");
+    setAttach(null);
+    setExpanded(null);
+    setChatId(String(Date.now()));
+    setStatus("All chats deleted.");
+  };
+
   const onAttach = async (f: File | undefined) => {
     if (!f) return;
     if (f.size > 200 * 1024) {
@@ -768,12 +805,37 @@ export default function ChatPage() {
           ))}
         </nav>
         <section className="recent">
-          <p>Recent</p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p style={{ margin: 0 }}>Recent</p>
+            {recent.length > 0 && (
+              <button
+                onClick={clearAllChats}
+                title="Delete all chats"
+                aria-label="Delete all chats"
+                style={{ background: "none", border: "none", color: "#6f6f75", fontSize: 10, cursor: "pointer", padding: "2px 4px" }}
+              >
+                Clear all
+              </button>
+            )}
+          </div>
           {recent.length === 0 && <span style={{ fontSize: 10, color: "#5f5f66" }}>No chats yet</span>}
           {recent.map((c) => (
-            <button key={c.id} onClick={() => openChat(c)} title={c.title}>
-              {c.title}
-            </button>
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 4 }} title={c.title}>
+              <button onClick={() => openChat(c)} title={c.title} style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {c.title}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm(`Delete "${c.title}"?`)) deleteChat(c.id);
+                }}
+                title={`Delete "${c.title}"`}
+                aria-label={`Delete chat ${c.title}`}
+                style={{ background: "none", border: "none", color: "#6f6f75", fontSize: 13, cursor: "pointer", padding: "2px 6px", lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </div>
           ))}
         </section>
         <div className="account">
@@ -855,7 +917,19 @@ export default function ChatPage() {
             >
               Share
             </button>
-            <button className="icon-button" onClick={newChat} aria-label="More">
+            {hasMessages && (
+              <button
+                className="quiet-button"
+                onClick={() => {
+                  if (window.confirm("Delete this chat?")) deleteChat(chatId);
+                }}
+                aria-label="Delete this chat"
+                title="Delete this chat"
+              >
+                Delete
+              </button>
+            )}
+            <button className="icon-button" onClick={newChat} aria-label="New chat" title="New chat">
               <Icon name="more" />
             </button>
           </div>
