@@ -17,7 +17,7 @@ export async function sendOtpMail(to: string, code: string) {
   await mailer().sendMail({
     from: `"Maxxen AI" <${from}>`,
     to,
-    subject: `Your Maxxen AI code: ${code}`,
+    subject: `Your Maxxen AI verification code`,
     text: `Your Maxxen AI verification code is ${code}. It expires in 10 minutes.`,
     html: `<div style="font-family:sans-serif;background:#0a0a16;padding:32px;color:#fff">
       <h1>Maxxen AI</h1><p>Your 6-digit code:</p>
