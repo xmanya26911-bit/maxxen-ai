@@ -43,7 +43,10 @@ export async function POST(req: Request) {
   }
   const mid = ((model || "") as string).trim() || "gpt-4o-mini";
   const steps = Math.min(Math.max(Number(maxSteps) || MAX_STEPS, 1), 10);
-  const ctx: Ctx = { githubToken, vercelToken, composioKey };
+  // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
+  // authorizes world-changing tools. Model-supplied confirm is stripped below.
+  const userConfirmed = Array.isArray(messages) && messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.startsWith("Confirmed:"));
+  const ctx: Ctx = { githubToken, vercelToken, composioKey, userConfirmed };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -95,8 +98,12 @@ export async function POST(req: Request) {
             try {
               args = JSON.parse(call.function?.arguments || "{}");
             } catch {
-              args = {};
+              history.push({ role: "tool", tool_call_id: call.id, content: "Invalid tool arguments JSON — ask the model to retry with valid JSON." });
+              activity(`Skipped malformed args for “${call.function?.name}”`);
+              continue;
             }
+            // Strip model-controlled authorization — only ctx.userConfirmed counts.
+            if ("confirm" in args) delete (args as any).confirm;
             if (!def) {
               history.push({ role: "tool", tool_call_id: call.id, content: "Unknown tool — skipped." });
               activity(`Skipped unknown tool “${call.function?.name}”`);
