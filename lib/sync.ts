@@ -11,6 +11,7 @@ const ls = (k: string, v?: string) => {
   return v;
 };
 
+// localStorage key -> vault field
 const PREF_MAP: Record<string, string> = {
   maxxen_baseurl: "baseURL",
   maxxen_model: "model",
@@ -76,16 +77,15 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
     });
     const j = await r.json();
     if (j.error) return { ok: false, message: j.error };
-    return { ok: true, message: j.savedSecrets ? "Saved locally ✓ / Synced encrypted ✓" : "Saved locally ✓ / Preferences synced ✓" };
+    return { ok: true, message: j.savedSecrets ? "Synced + encrypted to YOUR repo." : "Preferences synced to YOUR repo." };
   } catch (e: any) {
     return { ok: false, message: e.message || "Sync failed — kept locally." };
   }
 }
 
 export async function forgetVault(session: string): Promise<{ ok: boolean; message: string }> {
-  // Complete reset: server wipes prefs + vault (wipe:true); browser drops
-  // every maxxen_* key except session, email, OTP leftovers and chats.
-  // Conversations are user data, not settings — they are deliberately kept.
+  // Complete reset: server wipes prefs + vault (wipe:true), browser drops
+  // every maxxen_* key except the login session itself.
   const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
   try {
     const githubToken = ls("maxxen_github_token");
