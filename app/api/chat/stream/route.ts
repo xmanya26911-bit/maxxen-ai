@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
+import { budgeted, sanitizeMessages } from "@/lib/context";
 
 // Streaming twin of /api/chat: Server-Sent Events, one JSON payload per line:
 //   data: {"delta":"..."} … data: {"done":true,"mode":"build"} | data: {"error":"..."}
@@ -16,23 +17,6 @@ const MODES: Record<string, string> = {
   agent: `Work like an engineering collaborator: break the task into numbered file operations, narrate each step, finish with what changed and what to verify. You cannot run commands yourself — be explicit and give exact commands.`,
 };
 
-const MAX_TOTAL_CHARS = 48000;
-const MAX_MSG_CHARS = 12000;
-
-function budgeted(clean: { role: "user" | "assistant"; content: string }[]) {
-  const sized = clean.map((m) => ({ ...m, content: m.content.slice(0, MAX_MSG_CHARS) }));
-  let total = sized.reduce((n, m) => n + m.content.length, 0);
-  if (total <= MAX_TOTAL_CHARS) return sized;
-  const first = sized[0];
-  const tail: typeof sized = [];
-  let keep = MAX_TOTAL_CHARS - Math.min(first.content.length, 6000);
-  for (let i = sized.length - 1; i >= 1 && keep > 0; i--) {
-    tail.unshift(sized[i]);
-    keep -= sized[i].content.length;
-  }
-  return [first, ...tail];
-}
-
 export async function POST(req: Request) {
   let body: any = {};
   try {
@@ -43,9 +27,7 @@ export async function POST(req: Request) {
   const { messages, apiKey, baseURL, model, provider, mode } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages to send." }, { status: 400 });
-  const clean = messages
-    .filter((x: any) => x && (x.role === "user" || x.role === "assistant") && typeof x.content === "string")
-    .map((x: any) => ({ role: x.role as "user" | "assistant", content: x.content }));
+  const clean = sanitizeMessages(messages);
   if (!clean.length) return NextResponse.json({ error: "No valid messages to send." }, { status: 400 });
 
   const modeKey = typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
@@ -107,6 +89,7 @@ export async function POST(req: Request) {
                   send({ delta });
                 }
               } catch {
+                /* partial chunk — wait for more */
               }
             }
           }
@@ -130,6 +113,7 @@ export async function POST(req: Request) {
             empty = false;
             send({ delta });
           }
+          if ((req as any).signal?.aborted) break;
         }
         if (empty) fail("Model returned an empty response. Retry, or switch models.");
         else send({ done: true, mode: modeKey });
