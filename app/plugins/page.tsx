@@ -23,10 +23,17 @@ export default function Plugins() {
   useEffect(() => {
     (async () => {
       const s = ls("maxxen_session");
-      if (!s) { router.replace("/login"); return; }
+      if (!s) {
+        router.replace("/login");
+        return;
+      }
       try {
         const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
-        if (!r.ok) { ls("maxxen_session", "__DEL__"); router.replace("/login"); return; }
+        if (!r.ok) {
+          ls("maxxen_session", "__DEL__");
+          router.replace("/login");
+          return;
+        }
       } catch {
         router.replace("/login");
         return;
@@ -64,14 +71,22 @@ export default function Plugins() {
   return (
     <main className="min-h-screen text-white" style={{ background: "var(--mx-bg)" }}>
       <header className="border-b border-white/10 px-6 py-4 flex items-center gap-4">
-        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>MAXXEN</a>
+        <a href="/" className="font-black text-lg" style={{ textDecoration: "none", color: "inherit" }}>
+          MAXXEN
+        </a>
         <span style={{ color: "var(--mx-faint)", fontSize: 12 }}>/ plugins</span>
-        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>Open Chat →</a>
+        <a href="/chat" className="mx-btn" style={{ textDecoration: "none", fontSize: 13, padding: "9px 16px", marginLeft: "auto" }}>
+          Open Chat →
+        </a>
       </header>
       <div className="max-w-5xl mx-auto p-6">
         <h2 style={{ fontSize: "var(--mx-h2)", margin: "8px 0 4px" }}>Plugin hub</h2>
         <p style={{ color: "var(--mx-muted)", fontSize: 13, margin: "0 0 16px" }}>Connect toolkits on YOUR Composio account. Your key, your plugins, your data.</p>
-        {status && <div className="mx-status" role="status">{status}</div>}
+        {status && (
+          <div className="mx-status" role="status">
+            {status}
+          </div>
+        )}
         <div className="mx-panel">
           <h2>Your Composio key</h2>
           <p className="sub">Stored only in this browser. Required before anything below works.</p>
@@ -85,14 +100,20 @@ export default function Plugins() {
           <div className="body">
             <div className="flex gap-2">
               <input className="mx-field" placeholder="toolkit slug — e.g. gmail" value={toolkit} onChange={(e) => setToolkit(e.target.value.toLowerCase().trim())} aria-label="Toolkit slug" />
-              <button className="mx-btn" onClick={() => void check()} disabled={checking}>{checking ? "Checking…" : "Check"}</button>
+              <button className="mx-btn" onClick={() => void check()} disabled={checking}>
+                {checking ? "Checking…" : "Check"}
+              </button>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {POPULAR.map((t) => (
-                <button key={t} className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => setToolkit(t)}>{t}</button>
+                <button key={t} className="mx-btn-ghost" style={{ padding: "7px 12px", fontSize: 12 }} onClick={() => setToolkit(t)}>
+                  {t}
+                </button>
               ))}
             </div>
-            <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)", fontSize: 13 }}>Open YOUR Composio dashboard to add toolkits →</a>
+            <a href="https://app.composio.dev" target="_blank" rel="noreferrer" style={{ color: "var(--mx-link)", fontSize: 13 }}>
+              Open YOUR Composio dashboard to add toolkits →
+            </a>
           </div>
         </div>
       </div>
