@@ -33,7 +33,9 @@ export default function Landing() {
   return (
     <div className="lp">
       <nav className="lp-nav">
-        <a href="/" className="lp-brand"><span className="lp-mark"><i /><i /><i /></span>MAXXEN</a>
+        <a href="/" className="lp-brand">
+          <span className="lp-mark"><i /><i /><i /></span>MAXXEN
+        </a>
         <div className="lp-links">
           <a href="#product">Product</a>
           <a href="#how">How it works</a>
@@ -67,13 +69,13 @@ export default function Landing() {
 
       <div className="lp-marquee" aria-hidden="true">
         <div className="lp-marquee-track">
-          {[0, 1].flatMap((k) => ["WEBSITES", "APPS", "DASHBOARDS", "LANDING PAGES", "AGENTS", "AUTOMATIONS", "PROTOTYPES", "DEPLOYS"].map((w, i) => <span key={`${k}-${i}`}>{w} <i>✦</i></span>))}
+          {Array.from({ length: 2 }).flatMap((_, k) => ["WEBSITES", "APPS", "DASHBOARDS", "LANDING PAGES", "AGENTS", "AUTOMATIONS", "PROTOTYPES", "DEPLOYS"].map((w, i) => <span key={`${k}-${i}`}>{w} <i>✦</i></span>))}
         </div>
       </div>
 
       <section className="lp-section" id="product">
         <p className="lp-kicker lp-reveal">THE PRODUCT</p>
-        <h2 className="lp-h2 lp-reveal">One workspace.<br />Every superpower.</h2>
+        <h2 className="lp-h2 lp-reveal">One workspace.<br /><em>Every</em> superpower.</h2>
         <p className="lp-lead lp-reveal">Chat, build, preview, save and ship — without handing your keys or your data to anyone.</p>
         <div className="lp-grid">
           {FEATURES.map((f) => (
@@ -89,7 +91,7 @@ export default function Landing() {
 
       <section className="lp-section" id="how" style={{ paddingTop: 0 }}>
         <p className="lp-kicker lp-reveal">HOW IT WORKS</p>
-        <h2 className="lp-h2 lp-reveal">Live in three steps.</h2>
+        <h2 className="lp-h2 lp-reveal">Live in <em>three</em> steps.</h2>
         <div className="lp-steps" style={{ marginTop: 50 }}>
           <div className="lp-step lp-reveal"><b className="num">1</b><h3>Verify your email</h3><p>Get a 6-digit code at any address. It self-destructs in <code>10 minutes</code> — nothing is stored.</p></div>
           <div className="lp-step lp-reveal"><b className="num">2</b><h3>Bring your keys</h3><p>Paste Gemini / ChatGPT keys, your GitHub token and your Composio key. Everything stays in <code>your browser</code>.</p></div>
@@ -101,7 +103,7 @@ export default function Landing() {
         <div className="lp-band-inner">
           <div>
             <p className="lp-kicker lp-reveal">SECURITY MODEL</p>
-            <h2 className="lp-h2 lp-reveal">We hold nothing.</h2>
+            <h2 className="lp-h2 lp-reveal">We hold <em>nothing.</em></h2>
             <p className="lp-lead lp-reveal" style={{ marginBottom: 0 }}>There is no Maxxen database. No developer backdoor. Your secrets live in your browser; your work lives in your GitHub.</p>
             <div className="lp-checks">
               <div className="lp-check lp-reveal"><i>✓</i><div><b>Keys never leave your browser</b><span>BYOK calls go straight from your device to OpenAI / Google.</span></div></div>
@@ -111,14 +113,14 @@ export default function Landing() {
           </div>
           <div className="lp-terminal lp-reveal">
             <header><i /><i /><i /></header>
-            <pre><span className="c"># your footprint on our servers: nothing.</span>{"\n"}<span className="g">$</span> maxxen login you@mail.com{"\n"}<span className="g">✓</span> code sent · expires in 10:00{"\n"}<span className="g">$</span> maxxen chat --byok{"\n"}<span className="g">✓</span> keys: browser-only{"\n"}<span className="g">✓</span> storage: your-github/maxxen-data{"\n"}<span className="g">✓</span> deploy: your-vercel/maxxen</pre>
+            <pre>{<span className="c"># your footprint on our servers: nothing.</span>}{"\n"}<span className="g">$</span> maxxen login you@mail.com{"\n"}<span className="g">✓</span> code sent · expires in 10:00{"\n"}<span className="g">$</span> maxxen chat --byok{"\n"}<span className="g">✓</span> keys: browser-only{"\n"}<span className="g">✓</span> storage: your-github/maxxen-data{"\n"}<span className="g">✓</span> deploy: your-vercel/maxxen</pre>
           </div>
         </div>
       </div>
 
       <section className="lp-section">
         <p className="lp-kicker lp-reveal">THE BUILDER</p>
-        <h2 className="lp-h2 lp-reveal">Describe it. Ship it.</h2>
+        <h2 className="lp-h2 lp-reveal">Describe it. <em>Ship</em> it.</h2>
         <p className="lp-lead lp-reveal">Every build renders as a live artifact you can preview, apply to your GitHub, and deploy.</p>
         <div className="lp-teaser lp-reveal">
           <div className="lp-teaser-bar"><div className="dots"><i /><i /><i /></div>maxxen.vercel.app/chat</div>
@@ -139,7 +141,7 @@ export default function Landing() {
 
       <section className="lp-section" id="faq" style={{ paddingTop: 0 }}>
         <p className="lp-kicker lp-reveal">QUESTIONS</p>
-        <h2 className="lp-h2 lp-reveal">Asked often.</h2>
+        <h2 className="lp-h2 lp-reveal">Asked <em>often.</em></h2>
         <div className="lp-faq">
           {FAQS.map((f) => (
             <details key={f.q} className="lp-reveal">
@@ -154,7 +156,7 @@ export default function Landing() {
         <span className="lp-orb lp-o1" />
         <span className="lp-orb lp-o2" />
         <p className="lp-eyebrow lp-reveal">FREE FOREVER · BRING YOUR KEYS</p>
-        <h2 className="lp-reveal">STOP SCROLLING.<br />Start building.</h2>
+        <h2 className="lp-reveal">STOP SCROLLING.<br /><em>Start building.</em></h2>
         <p className="lp-reveal">Your first deploy is two minutes away.</p>
         <div className="lp-hero-cta lp-reveal">
           <a href="/login" className="lp-cta">Get your code ↗</a>
