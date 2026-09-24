@@ -4,11 +4,13 @@ import { OTP_TTL_MS } from "./otp-store";
 // Single server-side secret primitive. Set OTP_SECRET in env for production;
 // falls back to the Gmail app password (already a high-entropy server secret).
 export function serverSecret() {
-  return (
+  const s =
     process.env.OTP_SECRET ||
-    (process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "") ||
-    "maxxen-dev-only"
-  );
+    (process.env.GMAIL_APP_PASSWORD || "").replace(/\s+/g, "");
+  if (s) return s;
+  if (process.env.NODE_ENV === "production")
+    throw new Error("Missing OTP_SECRET (or GMAIL_APP_PASSWORD) — refusing to sign with dev fallback.");
+  return "maxxen-dev-only";
 }
 
 // Sessions are HMAC-signed and carry their own expiry (default 30 days).
@@ -25,13 +27,14 @@ export function signSession(email: string, ttlMs = SESSION_TTL_MS) {
 export function verifySession(token: string): string | null {
   try {
     const clean = String(token || "")
-      .replace(/^﻿/, "")
+      .replace(/^\uFEFF/, "")
       .trim();
     if (!clean) return null;
     const parts = Buffer.from(clean, "base64url").toString().split("|");
     if (parts.length !== 3) return null;
     const [email, exp, sig] = parts;
-    if (!email || !exp || Date.now() > Number(exp)) return null;
+    const expN = Number(exp);
+    if (!email || !exp || !Number.isFinite(expN) || Date.now() > expN) return null;
     const expect = crypto.createHmac("sha256", serverSecret()).update(`${email}|${exp}`).digest("hex");
     if (expect.length !== sig.length) return null;
     if (!crypto.timingSafeEqual(Buffer.from(expect), Buffer.from(sig))) return null;
