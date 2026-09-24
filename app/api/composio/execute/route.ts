@@ -15,11 +15,22 @@ export async function POST(req: Request) {
     const slug = body?.tool || body?.action;
     const args = body?.params ?? body?.arguments ?? {};
     const connectedAccountId = body?.connectedAccountId;
-    if (!composioKey) return NextResponse.json({ error: "Missing Composio API key. Add YOUR key on /plugins." }, { status: 400 });
+    const confirm = body?.confirm;
+    if (!composioKey || typeof composioKey !== "string")
+      return NextResponse.json({ error: "Missing Composio API key. Add YOUR key on /plugins." }, { status: 400 });
     if (!slug || typeof slug !== "string")
       return NextResponse.json({ error: "Missing tool slug. Pass { tool: 'TOOL_SLUG', params: {...} }." }, { status: 400 });
     if (args && (typeof args !== "object" || Array.isArray(args)))
       return NextResponse.json({ error: "params must be a JSON object." }, { status: 400 });
+    // Human gate for direct calls (UI button = gesture). Destructive tools need { confirm: true }.
+    const hay = `${slug} ${JSON.stringify(args)}`;
+    const destructive = /send|delete|remove|create|update|publish|post|forward|reply|archive|share|invite|trash/i.test(hay);
+    if (destructive && confirm !== true) {
+      return NextResponse.json(
+        { error: `“${slug}” changes the outside world — pass { confirm: true } after explicit user confirmation.`, needsConfirm: true },
+        { status: 403 }
+      );
+    }
 
     const payload: Record<string, unknown> = { tool_slug: slug, arguments: args };
     if (connectedAccountId) payload.connected_account_id = connectedAccountId;
