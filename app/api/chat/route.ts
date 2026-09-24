@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
+import { budgeted, sanitizeMessages } from "@/lib/context";
 
 const BASE_SYSTEM = `You are Maxxen AI, a multipurpose agentic builder inside the Maxxen workspace.`;
 
@@ -17,23 +18,7 @@ const MODES: Record<string, string> = {
   agent: `Work like an engineering collaborator: break the task into numbered file operations (inspect/create/update), narrate each step as you go ("1. Inspecting project structure…", "2. Updating X…"), and finish with a summary of what changed and what to verify. You cannot run commands yourself — be explicit about that and give exact commands for the user.`,
 };
 
-// Crude but real context budget: ~48k chars total (system + head + tail).
-const MAX_TOTAL_CHARS = 48000;
-const MAX_MSG_CHARS = 12000;
-
-function budgeted(clean: { role: "user" | "assistant"; content: string }[]) {
-  const sized = clean.map((m) => ({ ...m, content: m.content.slice(0, MAX_MSG_CHARS) }));
-  let total = sized.reduce((n, m) => n + m.content.length, 0);
-  if (total <= MAX_TOTAL_CHARS) return sized;
-  const first = sized[0];
-  const tail: typeof sized = [];
-  let keep = MAX_TOTAL_CHARS - Math.min(first.content.length, 6000);
-  for (let i = sized.length - 1; i >= 1 && keep > 0; i--) {
-    tail.unshift(sized[i]);
-    keep -= sized[i].content.length;
-  }
-  return [first, ...tail];
-}
+// Context budget lives in lib/context (shared + unit-tested).
 
 function hintFor(e: any, status?: number): string {
   const raw = String(e?.message || e || "");
@@ -74,11 +59,9 @@ async function callAnthropic(apiKey: string, baseURL: string, model: string, cle
 export async function POST(req: Request) {
   try {
     const { messages, apiKey, baseURL, model, provider, mode } = await req.json();
-    if (!apiKey) return NextResponse.json({ error: "Missing API key. Pick ChatGPT, Claude or Gemini in /chat (model menu) or /settings, paste the key, done." }, { status: 400 });
+    if (!apiKey) return NextResponse.json({ error: "Missing API key. Pick ChatGPT, Claude, Gemini or All-in-one in /chat, paste the key, done." }, { status: 400 });
     if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages to send." }, { status: 400 });
-    const clean = messages
-      .filter((x: any) => x && (x.role === "user" || x.role === "assistant") && typeof x.content === "string")
-      .map((x: any) => ({ role: x.role as "user" | "assistant", content: x.content }));
+    const clean = sanitizeMessages(messages);
     if (!clean.length) return NextResponse.json({ error: "No valid messages to send." }, { status: 400 });
 
     const modeKey = typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
