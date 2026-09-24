@@ -10,38 +10,76 @@ function key() {
 }
 
 export function issueTicket(email: string, code: string, ttlMs = OTP_TTL_MS) {
+  const e = email.toLowerCase();
   const exp = Date.now() + ttlMs;
-  const data = `${email.toLowerCase()}|${exp}|${code}`;
-  const sig = crypto.createHmac("sha256", key()).update(data).digest("hex");
-  return Buffer.from(`${email.toLowerCase()}|${exp}|${sig}`).toString("base64url");
+  const cleanCode = String(code).trim();
+  const codeSig = crypto.createHmac("sha256", key()).update(`${e}|${exp}|${cleanCode}`).digest("hex");
+  // freshSig proves "this ticket was issued for this email+exp" without revealing code.
+  // ticketFreshFor() verifies freshSig, so forged tickets no longer pass freshness checks.
+  const freshSig = crypto.createHmac("sha256", key()).update(`${e}|${exp}|fresh`).digest("hex");
+  return Buffer.from(`${e}|${exp}|${codeSig}|${freshSig}`).toString("base64url");
+}
+
+function parseExp(tExp: string): number | null {
+  if (!tExp) return null;
+  const n = Number(tExp);
+  if (!Number.isFinite(n)) return null;
+  return n;
 }
 
 export function ticketFreshFor(ticket: string, email: string): boolean {
   try {
     const cleanTicket = String(ticket).replace(/^﻿/, "").trim();
     const parts = Buffer.from(cleanTicket, "base64url").toString().split("|");
-    if (parts.length !== 3) return false;
-    const [tEmail, tExp] = parts;
-    if (tEmail !== String(email).toLowerCase()) return false;
-    if (!tExp || Date.now() > Number(tExp)) return false;
-    return true;
+    const e = String(email).toLowerCase();
+    // New 4-part tickets: verify freshSig (HMAC, no oracle).
+    if (parts.length === 4) {
+      const [tEmail, tExp, , tFresh] = parts;
+      if (tEmail !== e) return false;
+      const exp = parseExp(tExp);
+      if (exp === null || Date.now() > exp) return false;
+      const expectFresh = crypto.createHmac("sha256", key()).update(`${tEmail}|${tExp}|fresh`).digest("hex");
+      if (expectFresh.length !== tFresh.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(expectFresh), Buffer.from(tFresh));
+    }
+    // Old 3-part tickets: cannot verify freshness without code — fail closed.
+    return false;
   } catch {
     return false;
   }
 }
-
 export function checkTicket(ticket: string, email: string, code: string): boolean {
   try {
     const cleanTicket = String(ticket).replace(/^﻿/, "").trim();
     const parts = Buffer.from(cleanTicket, "base64url").toString().split("|");
-    if (parts.length !== 3) return false;
-    const [tEmail, tExp, tSig] = parts;
-    if (tEmail !== String(email).toLowerCase()) return false;
-    if (!tExp || Date.now() > Number(tExp)) return false;
-    const data = `${tEmail}|${tExp}|${String(code).trim()}`;
-    const expect = crypto.createHmac("sha256", key()).update(data).digest("hex");
-    if (expect.length !== tSig.length) return false;
-    return crypto.timingSafeEqual(Buffer.from(expect), Buffer.from(tSig));
+    const e = String(email).toLowerCase();
+    // New format
+    if (parts.length === 4) {
+      const [tEmail, tExp, tSig, tFresh] = parts;
+      if (tEmail !== e) return false;
+      const exp = parseExp(tExp);
+      if (exp === null || Date.now() > exp) return false;
+      // verify freshness first (fail fast on forged tickets)
+      const expectFresh = crypto.createHmac("sha256", key()).update(`${tEmail}|${tExp}|fresh`).digest("hex");
+      if (expectFresh.length !== tFresh.length) return false;
+      if (!crypto.timingSafeEqual(Buffer.from(expectFresh), Buffer.from(tFresh))) return false;
+      const data = `${tEmail}|${tExp}|${String(code).trim()}`;
+      const expect = crypto.createHmac("sha256", key()).update(data).digest("hex");
+      if (expect.length !== tSig.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(expect), Buffer.from(tSig));
+    }
+    // Legacy 3-part (transitional, 10-min window): verify as before, with finite-exp check.
+    if (parts.length === 3) {
+      const [tEmail, tExp, tSig] = parts;
+      if (tEmail !== e) return false;
+      const exp = parseExp(tExp);
+      if (exp === null || Date.now() > exp) return false;
+      const data = `${tEmail}|${tExp}|${String(code).trim()}`;
+      const expect = crypto.createHmac("sha256", key()).update(data).digest("hex");
+      if (expect.length !== tSig.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(expect), Buffer.from(tSig));
+    }
+    return false;
   } catch {
     return false;
   }
