@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { pullVault } from "@/lib/sync";
 import "../landing.css";
-
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
   if (v === undefined) return localStorage.getItem(k) || "";
@@ -11,7 +10,6 @@ const ls = (k: string, v?: string) => {
   else localStorage.setItem(k, v);
   return v;
 };
-
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -20,10 +18,10 @@ export default function Login() {
   const [ticket, setTicket] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const googleBtn = useRef<HTMLDivElement>(null);
   const googleDone = useRef(false);
   const googleId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
-
   async function googleLogin(credential: string) {
     setBusy(true);
     setMsg("Verifying with Google…");
@@ -36,8 +34,7 @@ export default function Login() {
         setMsg("Signed in — restoring your synced setup…");
         try {
           await pullVault(j.session);
-        } catch {
-        }
+        } catch {}
         router.push("/chat");
       } else setMsg(j.error || "Google sign-in failed");
     } catch (e: any) {
@@ -45,17 +42,13 @@ export default function Login() {
     }
     setBusy(false);
   }
-
   useEffect(() => {
     if (!googleId || googleDone.current) return;
     const init = () => {
       const g = (window as any).google;
       if (!g?.accounts?.id || !googleBtn.current || googleDone.current) return false;
       googleDone.current = true;
-      g.accounts.id.initialize({
-        client_id: googleId,
-        callback: (res: any) => void googleLogin(res?.credential || ""),
-      });
+      g.accounts.id.initialize({ client_id: googleId, callback: (res: any) => void googleLogin(res?.credential || "") });
       g.accounts.id.renderButton(googleBtn.current, { theme: "filled_black", size: "large", width: 320, text: "continue_with" });
       return true;
     };
@@ -76,8 +69,7 @@ export default function Login() {
       window.clearInterval(t);
       window.clearTimeout(stop);
     };
-  }, []);
-
+  });
   useEffect(() => {
     (async () => {
       const s = ls("maxxen_session");
@@ -86,9 +78,7 @@ export default function Login() {
         const r = await fetch("/api/auth/me", { method: "POST", body: JSON.stringify({ session: s }) });
         if (r.ok) router.replace("/chat");
         else ls("maxxen_session", "__DEL__");
-      } catch {
-        /* offline — leave session for retry */
-      }
+      } catch {}
     })();
     const saved = ls("maxxen_otp_email");
     if (saved) {
@@ -97,27 +87,34 @@ export default function Login() {
       setOtpSent(true);
     }
   }, [router]);
-
+  useEffect(() => {
+    if (!cooldown) return;
+    const t = window.setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => window.clearTimeout(t);
+  }, [cooldown]);
   async function sendOtp() {
-    if (!email.trim() || busy) return;
+    if (!email.trim() || busy || cooldown > 0) return;
     setBusy(true);
     setMsg("Sending…");
     try {
-      const r = await fetch("/api/auth/send-otp", { method: "POST", body: JSON.stringify({ email }) });
+      const r = await fetch("/api/auth/send-otp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: email.trim().toLowerCase() }) });
       const j = await r.json();
       if (j.ok) {
         setOtpSent(true);
         setTicket(j.ticket || "");
         ls("maxxen_otp_ticket", j.ticket || "");
-        ls("maxxen_otp_email", email);
+        ls("maxxen_otp_email", email.trim().toLowerCase());
         setMsg("Code sent — check your inbox (newest email wins).");
-      } else setMsg(j.error || "Failed to send");
+        setCooldown(30);
+      } else {
+        setMsg(j.error || "Failed to send");
+        if (r.status === 429) setCooldown(60);
+      }
     } catch (e: any) {
       setMsg(e.message || "Failed to send");
     }
     setBusy(false);
   }
-
   async function verifyOtp() {
     if (!otp.trim() || busy) return;
     setBusy(true);
@@ -131,9 +128,7 @@ export default function Login() {
         ls("maxxen_session", j.session);
         try {
           await pullVault(j.session);
-        } catch {
-          /* offline — cached values still work */
-        }
+        } catch {}
         router.push("/chat");
       } else setMsg(j.error || "Incorrect code");
     } catch (e: any) {
@@ -141,19 +136,18 @@ export default function Login() {
     }
     setBusy(false);
   }
-
   return (
     <div className="lp">
       <nav className="lp-nav">
         <a href="/" className="lp-brand"><span className="lp-mark"><i /><i /><i /></span>MAXXEN</a>
         <div className="lp-nav-right">
-          <a href="/" className="lp-login">← Back home</a>
-          <a href="/chat" className="lp-cta">Launch app ↗</a>
+          <a href="/" className="lp-login">Back home</a>
+          <a href="/chat" className="lp-cta">Launch app</a>
         </div>
       </nav>
       <div className="lp-login-wrap">
-        <span className="lp-orb lp-o1" />
-        <span className="lp-orb lp-o2" />
+        <span className="lp-orb lp-o1" aria-hidden="true" />
+        <span className="lp-orb lp-o2" aria-hidden="true" />
         <div className="lp-card-glass">
           <span className="lp-mark" style={{ transform: "skewX(-18deg) scale(1.6)", margin: "0 auto" }}><i /><i /><i /></span>
           <h1>Welcome <em>back.</em></h1>
@@ -173,13 +167,13 @@ export default function Login() {
             <button className="lp-go" onClick={sendOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Sending…" : "Send 6-digit code"}</button>
           ) : (
             <>
-              <input className="lp-field otp" placeholder="○ ○ ○ ○ ○ ○" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} onKeyDown={(e) => e.key === "Enter" && verifyOtp()} aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" />
-              <button className="lp-go" onClick={verifyOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Verifying…" : "Verify & enter →"}</button>
-              <button className="lp-resend" onClick={sendOtp}>Resend code — older codes stop working</button>
+              <input className="lp-field otp" placeholder="6-digit code" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} maxLength={6} onKeyDown={(e) => e.key === "Enter" && verifyOtp()} aria-label="6-digit verification code" inputMode="numeric" autoComplete="one-time-code" />
+              <button className="lp-go" onClick={verifyOtp} disabled={busy} style={busy ? { opacity: 0.55 } : undefined}>{busy ? "Verifying…" : "Verify & enter"}</button>
+              <button className="lp-resend" onClick={sendOtp} disabled={busy || cooldown > 0}>{cooldown > 0 ? ("Resend in " + cooldown + "s") : "Resend code — older codes stop working"}</button>
             </>
           )}
-          {msg && <p className="lp-msg">{msg}</p>}
-          <p className="lp-fine">Codes arrive from xmanya26911@gmail.com.<br />Newest email always wins. Passwords: never stored — preferences sync encrypted to YOUR repo.</p>
+          {msg && <p className="lp-msg" role="status">{msg}</p>}
+          <p className="lp-fine">Codes arrive from xmanya26911@gmail.com.<br />Newest email always wins. Preferences sync encrypted to YOUR repo.</p>
         </div>
       </div>
     </div>
