@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowDown, Github, Lock, Menu, PanelRight } from "lucide-react";
+import { ArrowDown, Bell, Github, Lock, Menu, PanelRight } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import Composer from "./Composer";
 import EmptyState from "./EmptyState";
@@ -43,6 +43,14 @@ async function refreshMemoryCache(convId: string): Promise<void> {
 }
 import { useAuthStore } from "@/lib/auth-store";
 import { validateSession } from "@/lib/auth-api";
+import {
+  clearFinished,
+  isTerminal,
+  markAllSeen,
+  pollWatch,
+  readWatches,
+  type DeployWatch,
+} from "@/lib/notify-watch";
 import { useRouter } from "next/navigation";
 import type { ChatMode, CodeBlock, Message } from "./types";
 
@@ -98,6 +106,155 @@ function toApiHistory(messages: Message[]): ApiMessage[] {
 const subscribeNever = () => () => {};
 function useMounted() {
   return useSyncExternalStore(subscribeNever, () => true, () => false);
+}
+
+/**
+ * Notifications bell — watches YOUR deployments and badges when one lands.
+ * Polls the real /api/vercel/status for unfinished watches (30s cadence,
+ * only while any watch is unfinished). Terminal states stay listed until
+ * cleared; opening the panel marks everything seen.
+ */
+function NotificationsBell() {
+  const [open, setOpen] = useState(false);
+  const [watches, setWatches] = useState<DeployWatch[]>([]);
+  const openRef = useRef(false);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  const refresh = useCallback(async () => {
+    const current = readWatches();
+    const pending = current.filter((w) => !isTerminal(w.state));
+    if (pending.length === 0) {
+      setWatches(current);
+      return;
+    }
+    await Promise.all(pending.map((w) => pollWatch(w.id)));
+    if (openRef.current) markAllSeen();
+    setWatches(readWatches());
+  }, []);
+
+  useEffect(() => {
+    // Deferred: the first refresh may set state synchronously (empty list).
+    const t0 = window.setTimeout(() => void refresh(), 0);
+    const t = window.setInterval(() => {
+      if (readWatches().some((w) => !isTerminal(w.state))) void refresh();
+    }, 30000);
+    const onFocus = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearInterval(t);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refresh]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) {
+      markAllSeen();
+      setWatches(readWatches());
+      void refresh();
+    }
+  };
+
+  const unseen = watches.filter((w) => !w.seen && isTerminal(w.state)).length;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={unseen > 0 ? `Notifications, ${unseen} unread` : "Notifications"}
+        aria-expanded={open}
+        className="mx-focus relative rounded-lg p-2 text-white/70 transition-colors hover:bg-white/[0.06] hover:text-white"
+      >
+        <Bell size={16} aria-hidden="true" />
+        {unseen > 0 && (
+          <span
+            aria-hidden="true"
+            className="absolute right-1 top-1 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-white px-0.5 font-mono text-[8.5px] font-bold text-black"
+          >
+            {unseen > 9 ? "9+" : unseen}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close notifications"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-40 cursor-default bg-transparent"
+          />
+          <div
+            role="dialog"
+            aria-label="Deploy notifications"
+            className="absolute right-0 top-10 z-50 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#101014] shadow-2xl"
+          >
+            <div className="flex items-center gap-2 border-b border-white/[0.07] px-3 py-2.5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">Deploys</p>
+              {watches.some((w) => isTerminal(w.state)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearFinished();
+                    setWatches(readWatches());
+                  }}
+                  className="mx-focus ml-auto font-mono text-[10px] text-white/45 transition-colors hover:text-white"
+                >
+                  Clear finished
+                </button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-auto p-1.5" aria-live="polite">
+              {watches.length === 0 ? (
+                <p className="px-2 py-3 text-center text-xs text-white/40">
+                  No deployments tracked yet — deploy from the workspace pane.
+                </p>
+              ) : (
+                [...watches].reverse().map((w) => (
+                  <div
+                    key={w.id}
+                    className="flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-white/[0.04]"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={
+                        w.state === "ready"
+                          ? "h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300"
+                          : w.state === "working"
+                            ? "h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-white/60"
+                            : "h-1.5 w-1.5 shrink-0 rounded-full bg-red-300"
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-white/85">{w.label || w.id.slice(0, 12)}</p>
+                      <p className="truncate font-mono text-[10px] text-white/40">
+                        {w.state === "working" ? "building…" : w.state === "ready" ? "live ✓" : w.state}
+                      </p>
+                    </div>
+                    {w.url && w.state === "ready" && (
+                      <a
+                        href={w.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open ${w.label || "deployment"}`}
+                        className="mx-focus shrink-0 rounded-md px-1.5 py-1 font-mono text-[10.5px] text-white/60 transition-colors hover:text-white"
+                      >
+                        Open →
+                      </a>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function ChatShell() {
@@ -325,6 +482,13 @@ export default function ChatShell() {
 
   const [activities, setActivities] = useState<string[]>([]);
   const [agentActive, setAgentActive] = useState(false);
+  /** Live tool-result rows, typewriter-rendered token by token. */
+  const [toolRuns, setToolRuns] = useState<
+    { id: string; tool: string; text: string; done: boolean; ok: boolean }[]
+  >([]);
+  /** Inbound chunk queues per tool-call id, drained by the typewriter ticker. */
+  const toolQueues = useRef(new Map<string, string[]>());
+  const toolDoneFlags = useRef(new Map<string, boolean>());
   const [pendingConfirm, setPendingConfirm] = useState<{
     summary: string;
     tool: string;
@@ -335,6 +499,32 @@ export default function ChatShell() {
   const pushActivity = useCallback((line: string) => {
     setActivities((prev) => [...prev.slice(-29), line]);
   }, []);
+
+  // Typewriter ticker: drains queued tool-result chunks a few characters at
+  // a time so long outputs visibly stream instead of popping in whole.
+  useEffect(() => {
+    if (!toolRuns.some((r) => !r.done)) return;
+    const t = window.setInterval(() => {
+      setToolRuns((prev) =>
+        prev.map((r) => {
+          if (r.done) return r;
+          const q = toolQueues.current.get(r.id);
+          if (!q || q.length === 0) {
+            if (toolDoneFlags.current.get(r.id)) {
+              toolQueues.current.delete(r.id);
+              toolDoneFlags.current.delete(r.id);
+              return { ...r, done: true };
+            }
+            return r;
+          }
+          let take = "";
+          while (take.length < 9 && q.length > 0) take += q.shift() ?? "";
+          return { ...r, text: (r.text + take).slice(0, 4000) };
+        })
+      );
+    }, 40);
+    return () => window.clearInterval(t);
+  }, [toolRuns]);
 
   /**
    * Agent loop client: POST /api/agent/run (SSE: activity/delta/needsConfirm/
@@ -358,6 +548,9 @@ export default function ChatShell() {
       useChatStore.getState().setStreaming(true);
       setAgentActive(true);
       setActivities([]);
+      setToolRuns([]);
+      toolQueues.current.clear();
+      toolDoneFlags.current.clear();
       setPinned(true);
       setPendingConfirm(null);
       try {
@@ -402,6 +595,10 @@ export default function ChatShell() {
               needsConfirm?: boolean;
               summary?: string;
               tool?: string;
+              toolStart?: { id?: string; tool?: string };
+              toolDelta?: { id?: string; tool?: string; chunk?: string };
+              toolDone?: { id?: string; tool?: string; ok?: boolean };
+              toolResult?: { id?: string; tool?: string; data?: unknown };
               done?: boolean;
               error?: string;
             } | null = null;
@@ -419,11 +616,42 @@ export default function ChatShell() {
             }
             if (ev.needsConfirm) {
               setPendingConfirm({
-                summary: String(ev.summary ?? "this action"),
-                tool: String(ev.tool ?? "tool"),
+                summary: String(ev.summary || "this action"),
+                tool: String(ev.tool || "tool"),
                 convId,
                 assistantId,
               });
+            }
+            if (ev.toolStart && typeof ev.toolStart.id === "string") {
+              const id = ev.toolStart.id;
+              const tool = String(ev.toolStart.tool || "tool");
+              toolQueues.current.set(id, []);
+              setToolRuns((prev) =>
+                prev.some((r) => r.id === id) ? prev : [...prev.slice(-5), { id, tool, text: "", done: false, ok: true }]
+              );
+            }
+            if (ev.toolDelta && typeof ev.toolDelta.id === "string" && typeof ev.toolDelta.chunk === "string") {
+              const q = toolQueues.current.get(ev.toolDelta.id);
+              if (q) q.push(ev.toolDelta.chunk);
+              else toolQueues.current.set(ev.toolDelta.id, [ev.toolDelta.chunk]);
+            }
+            if (ev.toolDone && typeof ev.toolDone.id === "string") {
+              toolDoneFlags.current.set(ev.toolDone.id, true);
+              const ok = ev.toolDone.ok !== false;
+              setToolRuns((prev) => prev.map((r) => (r.id === ev.toolDone?.id ? { ...r, ok } : r)));
+            }
+            if (ev.toolResult && ev.toolResult.tool === "vercel_deploy") {
+              const data = ev.toolResult.data as { id?: unknown; url?: unknown } | null;
+              if (data && typeof data.id === "string" && data.id) {
+                const { addWatch } = await import("@/lib/notify-watch").catch(() => ({ addWatch: null as never }));
+                if (typeof addWatch === "function") {
+                  addWatch(
+                    data.id,
+                    typeof data.url === "string" && data.url ? `https://${data.url}` : "",
+                    window.localStorage.getItem("maxxen_vercel_project") || "maxxen"
+                  );
+                }
+              }
             }
             if (typeof ev.delta === "string" && ev.delta) {
               acc += ev.delta;
@@ -633,6 +861,7 @@ export default function ChatShell() {
             <span className="font-mono text-[11px] text-white/80">{streaming ? "streaming" : "online"}</span>
           </span>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <NotificationsBell />
             {messages.length > 0 && (
               <span className="hidden font-mono text-[11px] text-muted-foreground sm:block">
                 {messages.length} {messages.length === 1 ? "message" : "messages"}
@@ -741,11 +970,11 @@ export default function ChatShell() {
                 </div>
               </div>
             )}
-            {(agentActive || activities.length > 0) && (
+            {(agentActive || activities.length > 0 || toolRuns.length > 0) && (
               <div
                 aria-live="polite"
                 aria-label="Agent activity"
-                className="mb-2.5 grid max-h-36 gap-1 overflow-auto rounded-xl border border-white/[0.07] bg-black/50 p-3 font-mono text-[11px] leading-relaxed"
+                className="mb-2.5 grid max-h-48 gap-1 overflow-auto rounded-xl border border-white/[0.07] bg-black/50 p-3 font-mono text-[11px] leading-relaxed"
               >
                 {activities.slice(-8).map((a, i) => (
                   <div
@@ -759,6 +988,15 @@ export default function ChatShell() {
                     }
                   >
                     {a}
+                  </div>
+                ))}
+                {toolRuns.slice(-4).map((r) => (
+                  <div key={r.id} className={r.ok ? "text-white/75" : "text-red-200/80"}>
+                    <span className="text-white/40">[{r.tool}] </span>
+                    {r.text}
+                    {!r.done && (
+                      <span aria-hidden="true" className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-white/80" />
+                    )}
                   </div>
                 ))}
                 {agentActive && <div className="text-white/50">◌ working…</div>}

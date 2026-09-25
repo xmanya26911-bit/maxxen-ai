@@ -341,6 +341,14 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
       if (!j?.ok || !j?.id) {
         throw new Error((j && j.error) || "Deploy failed to start.");
       }
+      // Track it — the header bell polls status and badges on terminal state,
+      // even if you navigate away or switch tabs mid-deploy.
+      try {
+        const { addWatch } = await import("@/lib/notify-watch");
+        addWatch(j.id, j.url ? `https://${j.url}` : "", project);
+      } catch {
+        /* watchlist is best-effort */
+      }
       for (let i = 0; i < 36; i++) {
         await new Promise((res) => setTimeout(res, 5000));
         if (!aliveRef.current) return;

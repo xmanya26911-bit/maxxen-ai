@@ -9,6 +9,7 @@ import { buildRuntime } from "@/lib/maxxen-runtime";
 // SSE events (one JSON per line):
 //   activity {"phase":"planning|tool|done|error", "text":"…", "tool"?:id}
 //   delta {"delta":"…"}            streaming final-answer text
+//   toolStart/toolDelta/toolDone   token-by-token tool result streaming
 //   done {"done":true} | {"error":"…"}
 // Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps? }
 // Rules: OpenAI-compatible endpoints only (Anthropic has no function-calling
@@ -127,11 +128,44 @@ export async function POST(req: Request) {
               continue;
             }
             activity(`${def.id}`, "tool", def.id);
+            send({ toolStart: { id: call.id, tool: def.id } });
             let res;
             try {
               res = await def.run(args, ctx);
             } catch (e: any) {
               res = { ok: false as const, summary: e?.message || "Tool crashed." };
+            }
+            // Token-by-token result streaming: the full result text goes out
+            // as small word-boundary chunks (toolDelta) and the client
+            // typewriter-renders them, so long tool outputs stream live
+            // instead of landing as one block at step end.
+            const resultText = res.ok ? res.summary : `Failed: ${res.summary}`;
+            const dataExcerpt =
+              res.ok && res.data !== undefined && res.data !== null
+                ? `\n${JSON.stringify(res.data).slice(0, 1200)}`
+                : "";
+            const full = `${resultText}${dataExcerpt}`;
+            const words = full.split(/(\s+)/);
+            let piece = "";
+            const flushPiece = () => {
+              if (piece) {
+                send({ toolDelta: { id: call.id, tool: def.id, chunk: piece } });
+                piece = "";
+              }
+            };
+            for (const w of words) {
+              piece += w;
+              if (piece.length >= 24) flushPiece();
+            }
+            flushPiece();
+            send({ toolDone: { id: call.id, tool: def.id, ok: res.ok } });
+            if (res.ok && res.data !== undefined && res.data !== null) {
+              try {
+                const snapshot = JSON.parse(JSON.stringify(res.data));
+                send({ toolResult: { id: call.id, tool: def.id, data: snapshot } });
+              } catch {
+                /* non-serializable — summary text already streamed */
+              }
             }
             const line = res.ok ? `✓ ${res.summary}` : `✗ ${res.summary}`;
             activity(line, res.ok ? "tool" : "error", def.id);
