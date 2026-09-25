@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-[#07070f] text-white; }
+body { @apply bg-[#09090a] text-white; }
 .glass { @apply bg-white/5 border border-white/10 backdrop-blur-xl; }
-.btn-primary { @apply bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 rounded-xl font-semibold transition; }
-.input { @apply w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-violet-500 placeholder:text-white/30; }
+.btn-primary { @apply bg-[#cbdcff] text-[#101014] hover:bg-white rounded-lg font-semibold transition; }
+.input { @apply w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 outline-none focus:border-[#cbdcff]/40 placeholder:text-white/30; }
