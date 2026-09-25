@@ -1,6 +1,3 @@
-// Shared context budgeting: crude but real token guard (~48k chars).
-// Keeps the system-relevant head (first message = task setup) plus the
-// freshest tail. Pure function — unit-tested in maxxen.test.
 export const MAX_TOTAL_CHARS = 48000;
 export const MAX_MSG_CHARS = 12000;
 
