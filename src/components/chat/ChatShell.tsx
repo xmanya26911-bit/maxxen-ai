@@ -564,6 +564,7 @@ export default function ChatShell() {
             vercelToken: store().getItem("maxxen_vercel_token") || undefined,
             composioKey: store().getItem("maxxen_composio_key") || undefined,
             userEmail: useAuthStore.getState().session?.email || undefined,
+            composioUserId: store().getItem("maxxen_composio_user_id") || undefined,
             memory: readMemoryCacheSafe(convId),
           }),
           signal: controller.signal,

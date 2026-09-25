@@ -46,6 +46,7 @@ const USER_KEYS = [
   "maxxen_composio_key",
   "maxxen_agent_account",
   "maxxen_agent_app",
+  "maxxen_composio_user_id",
 ] as const;
 
 const PROFILE_PREFIX = "maxxen-profile-v1:";

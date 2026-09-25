@@ -17,6 +17,7 @@ const PREF_MAP: Record<string, string> = {
   maxxen_model: "model",
   maxxen_provider: "provider",
   maxxen_vercel_project: "vercelProject",
+  maxxen_composio_user_id: "composioUserId",
 };
 const SECRET_MAP: Record<string, string> = {
   maxxen_apikey: "apiKey",

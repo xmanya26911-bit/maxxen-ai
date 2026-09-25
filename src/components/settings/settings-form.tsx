@@ -103,6 +103,11 @@ export function SettingsForm() {
   const [wiping, setWiping] = useState(false);
   const [testingComposio, setTestingComposio] = useState(false);
   const [composioState, setComposioState] = useState<"unknown" | "connected" | "failed">("unknown");
+  const [composioUserId, setComposioUserId] = useState("");
+  const [composioAccounts, setComposioAccounts] = useState<
+    { toolkit: string; status: string; id: string; userId: string }[] | null
+  >(null);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
 
   const flash = (message: string, kind: "ok" | "err" | "info" = "info") => {
     setStatus(message);
@@ -133,6 +138,7 @@ export function SettingsForm() {
       setVercelToken(ls("maxxen_vercel_token"));
       setVercelProject(ls("maxxen_vercel_project") || "maxxen");
       setComposioKey(ls("maxxen_composio_key"));
+      setComposioUserId(ls("maxxen_composio_user_id"));
       setReady(true);
       const stored = useAuthStore.getState().session;
       if (stored?.token && ls("maxxen_github_token")) {
@@ -146,6 +152,7 @@ export function SettingsForm() {
           setVercelToken(ls("maxxen_vercel_token"));
           setVercelProject(ls("maxxen_vercel_project") || "maxxen");
           setComposioKey(ls("maxxen_composio_key"));
+          setComposioUserId(ls("maxxen_composio_user_id"));
           flash(`Synced from YOUR repo — ${v.message}`, "ok");
         }
       }
@@ -172,11 +179,45 @@ export function SettingsForm() {
     ls("maxxen_vercel_token", vercelToken.trim());
     ls("maxxen_vercel_project", vercelProject.trim() || "maxxen");
     ls("maxxen_composio_key", composioKey.trim());
+    ls("maxxen_composio_user_id", composioUserId.trim());
     flash("Saved locally — syncing to YOUR repo…", "info");
     const token = useAuthStore.getState().session?.token ?? "";
     const v = await pushVault(token);
     flash(v.message, v.ok ? "ok" : "err");
     setSaving(false);
+  };
+
+  /** Pull one item's identifying fields out of Composio's varied shapes. */
+  const toAccountRow = (a: unknown, i: number) => {
+    const o = (a ?? {}) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    const toolkitObj = o.toolkit as Record<string, unknown> | undefined;
+    return {
+      toolkit: str(o.toolkit_slug) || (toolkitObj ? str(toolkitObj.slug) : "") || str(o.app) || str(o.provider) || "unknown",
+      status: str(o.status) || "unknown",
+      id: str(o.id) || str(o.connected_account_id) || `row-${i}`,
+      userId:
+        str(o.user_id) || str(o.userId) || str(o.entity_id) || str(o.entityId) || "",
+    };
+  };
+
+  const refreshComposioAccounts = async (key: string) => {
+    setLoadingAccounts(true);
+    try {
+      const r = await fetch("/api/composio/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ composioKey: key }),
+      });
+      const j = await r.json().catch(() => null);
+      const c = j?.connected;
+      const list = Array.isArray(c) ? c : c?.items || c?.accounts || c?.data || [];
+      setComposioAccounts(Array.isArray(list) ? list.map(toAccountRow) : []);
+    } catch {
+      setComposioAccounts([]);
+    } finally {
+      setLoadingAccounts(false);
+    }
   };
 
   const testComposio = async () => {
@@ -193,12 +234,15 @@ export function SettingsForm() {
       if (r.ok && j?.ok) {
         setComposioState("connected");
         flash("Composio connected — key works on YOUR account.", "ok");
+        await refreshComposioAccounts(key);
       } else {
         setComposioState("failed");
+        setComposioAccounts(null);
         flash((j && j.error) || "Composio rejected the key.", "err");
       }
     } catch (e) {
       setComposioState("failed");
+      setComposioAccounts(null);
       flash(e instanceof Error ? e.message : "Composio check failed.", "err");
     } finally {
       setTestingComposio(false);
@@ -215,7 +259,10 @@ export function SettingsForm() {
     } else if (which === "composio") {
       setComposioKey("");
       ls("maxxen_composio_key", "");
+      setComposioUserId("");
+      ls("maxxen_composio_user_id", "");
       setComposioState("unknown");
+      setComposioAccounts(null);
     } else {
       setApiKey("");
       ls("maxxen_apikey", "");
@@ -234,6 +281,10 @@ export function SettingsForm() {
     setGithubToken("");
     setVercelToken("");
     setComposioKey("");
+    setComposioUserId("");
+    ls("maxxen_composio_user_id", "");
+    setComposioState("unknown");
+    setComposioAccounts(null);
     flash(v.message, v.ok ? "ok" : "err");
     setWiping(false);
   };
@@ -412,8 +463,86 @@ export function SettingsForm() {
             </div>
             <div>
               <label htmlFor="set-composio" className={LABEL}>Composio key</label>
-              <input id="set-composio" className={FIELD} value={composioKey} onChange={(e) => { setComposioKey(e.target.value); setComposioState("unknown"); }} placeholder="YOUR key" type="password" autoComplete="off" />
+              <input id="set-composio" className={FIELD} value={composioKey} onChange={(e) => { setComposioKey(e.target.value); setComposioState("unknown"); setComposioAccounts(null); }} placeholder="YOUR key" type="password" autoComplete="off" />
             </div>
+            <div>
+              <label htmlFor="set-composio-uid" className={LABEL}>Composio user ID (which connected account acts)</label>
+              <input
+                id="set-composio-uid"
+                className={FIELD}
+                value={composioUserId}
+                onChange={(e) => setComposioUserId(e.target.value)}
+                placeholder="e.g. you@gmail.com — pick from your accounts below"
+                autoComplete="off"
+              />
+              <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+                Find it below: Test the key, then choose Use next to the account you want Maxxen to act as.
+              </p>
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="mb-2 flex items-center gap-2">
+              <p className={LABEL} style={{ marginBottom: 0 }}>Your connected accounts</p>
+              <button
+                type="button"
+                onClick={() => composioKey.trim() && refreshComposioAccounts(composioKey.trim())}
+                disabled={loadingAccounts || !composioKey.trim()}
+                className="mx-focus font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white disabled:opacity-40"
+              >
+                {loadingAccounts ? "Loading…" : "Show connections"}
+              </button>
+            </div>
+            {composioAccounts === null ? (
+              <p className="text-[12px] text-white/35">Test the key above to list the accounts on YOUR Composio project.</p>
+            ) : composioAccounts.length === 0 ? (
+              <p className="text-[12px] text-white/35">
+                No connected accounts yet — connect Gmail, GitHub, … at app.composio.dev, then Show connections again.
+              </p>
+            ) : (
+              <ul className="grid gap-1.5">
+                {composioAccounts.map((a, i) => (
+                  <li
+                    key={`${a.id}-${i}`}
+                    className="flex items-center gap-2.5 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={
+                        a.status.toLowerCase() === "active"
+                          ? "h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300"
+                          : "h-1.5 w-1.5 shrink-0 rounded-full bg-white/25"
+                      }
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium text-white/85">{a.toolkit}</p>
+                      <p className="truncate font-mono text-[10px] text-white/40">
+                        {a.status}
+                        {a.userId ? ` · user: ${a.userId}` : " · no user id shown"}
+                        {a.id.startsWith("row-") ? "" : ` · ${a.id.slice(0, 18)}`}
+                      </p>
+                    </div>
+                    {a.userId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposioUserId(a.userId);
+                          ls("maxxen_composio_user_id", a.userId);
+                          flash(`Using "${a.userId}" for Composio actions — press Save everything.`, "info");
+                        }}
+                        aria-label={`Use ${a.userId} for Composio actions`}
+                        className={
+                          composioUserId.trim() === a.userId
+                            ? "mx-focus shrink-0 rounded-md bg-white px-2.5 py-1.5 font-mono text-[10.5px] font-semibold text-black"
+                            : "mx-focus shrink-0 rounded-md border border-white/10 px-2.5 py-1.5 font-mono text-[10.5px] text-white/60 transition-colors hover:text-white"
+                        }
+                      >
+                        {composioUserId.trim() === a.userId ? "Using ✓" : "Use"}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 

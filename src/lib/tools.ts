@@ -15,7 +15,7 @@ export type Permission = "read" | "write" | "deploy" | "external";
 // userConfirmed must come from an explicit human gesture (UI "Confirm" button →
 // "Confirmed:" user message), NEVER from model-supplied tool args. The agent
 // loop strips args.confirm before execution — see app/api/agent/run.
-export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean };
+export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean; composioUserId?: string };
 
 export type ToolResult = { ok: boolean; summary: string; data?: unknown; error?: string; needsConfirm?: boolean };
 
@@ -562,9 +562,11 @@ export const registry: ToolDef[] = [
       if (destructive && ctx.userConfirmed !== true)
         return { ok: false, summary: `“${slug}” changes the outside world — confirm explicitly first.`, needsConfirm: true };
       const { executeComposioTool, composioErrorDetail } = await import("./composio");
+      const explicitUserId = typeof args.userId === "string" && args.userId.trim() ? args.userId.trim() : undefined;
+      const storedUserId = typeof ctx.composioUserId === "string" && ctx.composioUserId.trim() ? ctx.composioUserId.trim() : undefined;
       const out = await executeComposioTool(key, slug, params, {
         connectedAccountId: typeof args.connectedAccountId === "string" ? args.connectedAccountId : undefined,
-        userId: typeof args.userId === "string" ? args.userId : undefined,
+        userId: explicitUserId ?? storedUserId,
         email: ctx.email,
       });
       if (!out.ok) return { ok: false, summary: `Composio refused the call (${composioErrorDetail(out.body, out.status)})` };
