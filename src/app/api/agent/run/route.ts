@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
-      { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, Ollama…). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
+      { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, Gemini, or a Custom base URL like Groq, Ollama, OpenRouter). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
       { status: 400 }
     );
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages." }, { status: 400 });

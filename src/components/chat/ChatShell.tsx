@@ -43,6 +43,7 @@ async function refreshMemoryCache(convId: string): Promise<void> {
 }
 import { useAuthStore } from "@/lib/auth-store";
 import { validateSession } from "@/lib/auth-api";
+import { getEndpoint } from "@/lib/endpoint";
 import {
   clearFinished,
   isTerminal,
@@ -54,18 +55,10 @@ import {
 import { useRouter } from "next/navigation";
 import type { ChatMode, CodeBlock, Message } from "./types";
 
-/** BYOK endpoint keys — same localStorage keys as the MAXXEN settings hub. */
+/** BYOK endpoint — per-provider key, legacy single key as fallback. */
 function endpointCredentials() {
   if (typeof window === "undefined") return null;
-  const apiKey = window.localStorage.getItem("maxxen_apikey") || "";
-  const model = window.localStorage.getItem("maxxen_model") || "";
-  if (!apiKey.trim() || !model.trim()) return null;
-  return {
-    apiKey: apiKey.trim(),
-    model: model.trim(),
-    baseURL: window.localStorage.getItem("maxxen_baseurl") || "",
-    provider: window.localStorage.getItem("maxxen_provider") || "custom",
-  };
+  return getEndpoint();
 }
 
 /**

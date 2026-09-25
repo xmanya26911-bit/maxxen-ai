@@ -20,7 +20,12 @@ const PREF_MAP: Record<string, string> = {
   maxxen_composio_user_id: "composioUserId",
 };
 const SECRET_MAP: Record<string, string> = {
+  // Per-provider chat keys (legacy maxxen_apikey still synced for older clients).
   maxxen_apikey: "apiKey",
+  maxxen_apikey_openai: "apiKeyOpenai",
+  maxxen_apikey_anthropic: "apiKeyAnthropic",
+  maxxen_apikey_gemini: "apiKeyGemini",
+  maxxen_apikey_custom: "apiKeyCustom",
   maxxen_composio_key: "composioKey",
   maxxen_github_token: "githubToken",
   maxxen_vercel_token: "vercelToken",

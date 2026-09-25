@@ -3,27 +3,20 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Loader2, LogOut, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Check, Eye, EyeOff, Loader2, LogOut, TriangleAlert } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
 import { validateSession } from "@/lib/auth-api";
 import { forgetVault, pullVault, pushVault } from "@/lib/sync";
-
-const PRESETS: Record<string, { baseURL: string; model: string; label: string }> = {
-  openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini", label: "◈ ChatGPT" },
-  anthropic: { baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest", label: "✶ Claude" },
-  gemini: {
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-    model: "gemini-1.5-flash",
-    label: "⬢ Gemini",
-  },
-  openrouter: {
-    baseURL: "https://openrouter.ai/api/v1",
-    model: "openai/gpt-4o-mini",
-    label: "⬣ All-in-one",
-  },
-};
+import {
+  PROVIDER_IDS,
+  PROVIDER_META,
+  getProviderKey,
+  normalizeProvider,
+  setProviderKey,
+  type ProviderId,
+} from "@/lib/endpoint";
 
 function ls(key: string, value?: string): string {
   if (typeof window === "undefined") return "";
@@ -89,10 +82,11 @@ export function SettingsForm() {
   const session = useAuthStore((s) => s.session);
   const signOut = useAuthStore((s) => s.signOut);
   const [ready, setReady] = useState(false);
-  const [provider, setProvider] = useState("custom");
+  const [provider, setProvider] = useState<ProviderId>("custom");
   const [baseURL, setBaseURL] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [githubToken, setGithubToken] = useState("");
   const [vercelToken, setVercelToken] = useState("");
   const [vercelProject, setVercelProject] = useState("maxxen");
@@ -130,9 +124,10 @@ export function SettingsForm() {
           return;
         }
       }
-      setProvider(ls("maxxen_provider") || "custom");
+      const prov = normalizeProvider(ls("maxxen_provider"));
+      setProvider(prov);
       setBaseURL(ls("maxxen_baseurl"));
-      setApiKey(ls("maxxen_apikey"));
+      setApiKey(getProviderKey(prov));
       setModel(ls("maxxen_model"));
       setGithubToken(ls("maxxen_github_token"));
       setVercelToken(ls("maxxen_vercel_token"));
@@ -145,9 +140,10 @@ export function SettingsForm() {
         const v = await pullVault(stored.token);
         if (v.ok && v.applied > 0) {
           setBaseURL(ls("maxxen_baseurl"));
-          setApiKey(ls("maxxen_apikey"));
           setModel(ls("maxxen_model"));
-          setProvider(ls("maxxen_provider") || "custom");
+          const syncedProv = normalizeProvider(ls("maxxen_provider"));
+          setProvider(syncedProv);
+          setApiKey(getProviderKey(syncedProv));
           setGithubToken(ls("maxxen_github_token"));
           setVercelToken(ls("maxxen_vercel_token"));
           setVercelProject(ls("maxxen_vercel_project") || "maxxen");
@@ -159,13 +155,25 @@ export function SettingsForm() {
     })();
   }, []);
 
+  /** Providers holding a saved key (this render's field counts for the active one). */
+  const keyedProviders = (Object.keys(PROVIDER_META) as ProviderId[]).filter(
+    (id) => getProviderKey(id).trim().length > 0 || (id === provider && apiKey.trim().length > 0)
+  );
+
   const pickPreset = (id: string) => {
-    const p = PRESETS[id];
-    if (!p) return;
-    // State only — persisted on Save (abandoning the page changes nothing).
-    setProvider(id);
-    setBaseURL(p.baseURL);
-    setModel(p.model);
+    const next = normalizeProvider(id);
+    const meta = PROVIDER_META[next];
+    // Park the current field into its own provider slot first, so switching
+    // providers never mixes keys — then load the incoming provider's world.
+    // (Runs only on explicit taps.)
+    setProviderKey(provider, apiKey);
+    setProvider(next);
+    setApiKey(getProviderKey(next));
+    setShowKey(false);
+    if (next !== "custom") {
+      setBaseURL(meta.baseURL);
+      setModel(meta.model);
+    }
   };
 
   const saveAll = async () => {
@@ -173,7 +181,7 @@ export function SettingsForm() {
     setSaving(true);
     ls("maxxen_provider", provider);
     ls("maxxen_baseurl", baseURL.trim());
-    ls("maxxen_apikey", apiKey.trim());
+    setProviderKey(provider, apiKey.trim());
     ls("maxxen_model", model.trim());
     ls("maxxen_github_token", githubToken.trim());
     ls("maxxen_vercel_token", vercelToken.trim());
@@ -265,6 +273,7 @@ export function SettingsForm() {
       setComposioAccounts(null);
     } else {
       setApiKey("");
+      setProviderKey(provider, "");
       ls("maxxen_apikey", "");
     }
     flash("Removed locally — press Save everything to sync the removal.", "info");
@@ -278,6 +287,8 @@ export function SettingsForm() {
     const token = useAuthStore.getState().session?.token ?? "";
     const v = await forgetVault(token);
     setApiKey("");
+    for (const p of PROVIDER_IDS) setProviderKey(p, "");
+    ls("maxxen_apikey", "");
     setGithubToken("");
     setVercelToken("");
     setComposioKey("");
@@ -380,31 +391,64 @@ export function SettingsForm() {
             Tap a provider, paste the one key, done. Used for every chat generation.
           </p>
           <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Provider presets">
-            {Object.entries(PRESETS).map(([id, p]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => pickPreset(id)}
-                aria-pressed={provider === id}
-                className={cn(
-                  "mx-focus mx-press rounded-lg border px-3.5 py-2 text-[12.5px] font-medium transition-colors",
-                  provider === id
-                    ? "border-white bg-white text-black"
-                    : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/25 hover:text-white"
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
+            {PROVIDER_IDS.map((id) => {
+              const meta = PROVIDER_META[id];
+              const saved = getProviderKey(id).trim().length > 0 || (id === provider && apiKey.trim().length > 0);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => pickPreset(id)}
+                  aria-pressed={provider === id}
+                  title={saved ? `${meta.label} — key saved` : `${meta.label} — no key yet`}
+                  className={cn(
+                    "mx-focus mx-press rounded-lg border px-3.5 py-2 text-[12.5px] font-medium transition-colors",
+                    provider === id
+                      ? "border-white bg-white text-black"
+                      : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/25 hover:text-white"
+                  )}
+                >
+                  {meta.label}
+                  <span aria-hidden="true" className={saved ? "ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 align-middle" : "ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-white/20 align-middle"} />
+                </button>
+              );
+            })}
           </div>
+          <p className="mt-2 font-mono text-[10.5px] text-white/35">
+            Each provider keeps its own key — switching never mixes them.
+          </p>
           <div className="mt-4 grid gap-3">
             <div>
               <label htmlFor="set-base" className={LABEL}>Base URL</label>
               <input id="set-base" className={FIELD} value={baseURL} onChange={(e) => setBaseURL(e.target.value)} placeholder="https://api.openai.com/v1" inputMode="url" autoComplete="off" />
             </div>
             <div>
-              <label htmlFor="set-key" className={LABEL}>API key</label>
-              <input id="set-key" className={FIELD} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-…" type="password" autoComplete="off" />
+              <label htmlFor="set-key" className={LABEL}>API key — {PROVIDER_META[provider].label}</label>
+              <div className="relative">
+                <input
+                  id="set-key"
+                  className={cn(FIELD, "pr-11")}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="paste key — visible to you only, in this browser"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  aria-describedby="set-key-hint"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((v) => !v)}
+                  aria-label={showKey ? "Hide API key" : "Show API key"}
+                  aria-pressed={showKey}
+                  title={showKey ? "Hide API key" : "Show API key"}
+                  className="mx-focus absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white"
+                >
+                  {showKey ? <EyeOff size={15} aria-hidden="true" /> : <Eye size={15} aria-hidden="true" />}
+                </button>
+              </div>
+              <p id="set-key-hint" className="mt-1 text-[11px] text-white/35">
+                Stored only in this browser{provider === "custom" ? ", plus your encrypted vault on Save" : " and your encrypted vault on Save"} — never sent anywhere except your provider.
+              </p>
             </div>
             <div>
               <label htmlFor="set-model" className={LABEL}>Model ID</label>

@@ -214,8 +214,8 @@ export const SUPERPOWERS: readonly SuperpowerCard[] = [
     id: "byok",
     glyph: "key",
     title: "BYOK — zero cost for you",
-    meta: "Gemini · OpenAI · OpenRouter",
-    body: "Paste your own Gemini and ChatGPT keys, plus any custom base URL. Your keys never leave your browser.",
+    meta: "ChatGPT · Claude · Gemini · Custom",
+    body: "Paste your own key for each provider — OpenAI, Anthropic, Gemini, or any OpenAI-compatible base URL. Keys never leave your browser.",
     tags: ["BYOK", "Browser-only", "Custom base URL"],
   },
   {
@@ -299,7 +299,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "Which AI models work?",
-    a: "Anything OpenAI-compatible plus Gemini: GPT-4o-mini, Gemini Flash, and custom base URLs like OpenRouter or Groq. Pick the model in /chat or Settings.",
+    a: "OpenAI, Anthropic, Gemini, plus a Custom slot for anything OpenAI-compatible — Groq, Ollama, OpenRouter, your own gateway. Each provider keeps its own key; pick the model in /chat or Settings.",
   },
   {
     q: "How do plugins work?",
@@ -333,10 +333,10 @@ export const CHAT_MODES = [
   { id: "agent", label: "Agent", hint: "Uses your GitHub, Vercel and Composio tools." },
 ] as const;
 
-/* BYOK providers — mirrors PROVIDERS in the real app/chat/chrome.tsx. */
+/* BYOK providers — mirrors PROVIDER_META in src/lib/endpoint.ts. */
 export const CHAT_PROVIDERS = [
   { id: "openai", glyph: "◈", label: "ChatGPT", model: "gpt-4o-mini" },
   { id: "anthropic", glyph: "✶", label: "Claude", model: "claude-3-5-haiku" },
   { id: "gemini", glyph: "⬢", label: "Gemini", model: "gemini-1.5-flash" },
-  { id: "openrouter", glyph: "⬣", label: "All-in-one", model: "openai/gpt-4o-mini" },
+  { id: "custom", glyph: "⬣", label: "Custom", model: "gpt-4o-mini" },
 ] as const;
