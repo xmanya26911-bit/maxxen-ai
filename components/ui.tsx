@@ -1,24 +1,20 @@
 "use client";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
 
-// Minimal console primitives for the Settings hub (single design language:
-// tailwind + glass). Login/Landing/Chat each own their editorial systems
-// intentionally — no cross-system abstraction (see docs in chat).
-
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" };
 
-export function CButton({ variant = "primary", className = "", ...rest }: BtnProps) {
-  const base = variant === "primary" ? "mx-btn" : variant === "ghost" ? "mx-btn-ghost" : "mx-btn-ghost";
-  const danger = variant === "danger" ? { style: { color: "var(--mx-danger)", borderColor: "rgba(224,163,163,.35)" } } : {};
-  return <button className={`${base} ${className}`} {...danger} {...rest} />;
+export function CButton({ variant = "primary", className = "", style, ...rest }: BtnProps) {
+  const base = variant === "primary" ? "mx-btn" : "mx-btn-ghost";
+  const dangerStyle = variant === "danger" ? { color: "var(--mx-danger)", borderColor: "rgba(224,163,163,.35)" } : undefined;
+  return <button className={(base + " " + className).trim()} style={{ ...dangerStyle, ...style }} {...rest} />;
 }
 
 export function CField(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`mx-field ${props.className || ""}`} {...props} />;
+  return <input className={("mx-field " + (props.className || "")).trim()} {...props} />;
 }
 
 export function CSelect(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`mx-field ${props.className || ""}`} {...props} />;
+  return <select className={("mx-field " + (props.className || "")).trim()} {...props} />;
 }
 
 export function CPanel({ title, sub, children }: { title: string; sub?: string; children: ReactNode }) {
@@ -33,9 +29,5 @@ export function CPanel({ title, sub, children }: { title: string; sub?: string; 
 
 export function CStatus({ text }: { text: string }) {
   if (!text) return null;
-  return (
-    <div className="mx-status" role="status">
-      {text}
-    </div>
-  );
+  return <div className="mx-status" role="status">{text}</div>;
 }
