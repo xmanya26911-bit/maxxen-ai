@@ -569,7 +569,10 @@ export const registry: ToolDef[] = [
         body: JSON.stringify(payload),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) return { ok: false, summary: `Composio refused (HTTP ${r.status}): ${(j as any)?.error || (j as any)?.message || "unknown"}` };
+      if (!r.ok) {
+        const { composioErrorDetail } = await import("./composio");
+        return { ok: false, summary: `Composio refused the call (${composioErrorDetail(j, r.status)})` };
+      }
       return { ok: true, summary: `“${slug}” executed.`, data: (j as any)?.data ?? j };
     },
   },

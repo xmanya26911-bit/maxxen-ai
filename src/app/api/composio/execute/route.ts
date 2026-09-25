@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/composio";
 
 // REAL Composio tool execution (previously this only listed accounts).
 // Body: { composioKey, tool, action?, params?, connectedAccountId? }
@@ -11,12 +12,12 @@ import { NextResponse } from "next/server";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const composioKey = body?.composioKey;
+    const composioKey = cleanComposioKey(body?.composioKey);
     const slug = body?.tool || body?.action;
     const args = body?.params ?? body?.arguments ?? {};
     const connectedAccountId = body?.connectedAccountId;
     const confirm = body?.confirm;
-    if (!composioKey || typeof composioKey !== "string")
+    if (!composioKey)
       return NextResponse.json({ error: "Missing Composio API key. Add YOUR key on /plugins." }, { status: 400 });
     if (!slug || typeof slug !== "string")
       return NextResponse.json({ error: "Missing tool slug. Pass { tool: 'TOOL_SLUG', params: {...} }." }, { status: 400 });
@@ -37,14 +38,15 @@ export async function POST(req: Request) {
 
     const r = await fetch("https://backend.composio.dev/api/v3/tools/execute", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": composioKey },
+      headers: { "content-type": "application/json", ...composioHeaders(composioKey) },
       body: JSON.stringify(payload),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const rawErr = (j as any)?.error ?? (j as any)?.message ?? j;
-      const detail = typeof rawErr === "string" ? rawErr : JSON.stringify(rawErr).slice(0, 500);
-      return NextResponse.json({ error: `Composio refused the call (HTTP ${r.status}): ${detail}` }, { status: 502 });
+      return NextResponse.json(
+        { error: `Composio refused the call (${composioErrorDetail(j, r.status)})` },
+        { status: 502 }
+      );
     }
     return NextResponse.json({ ok: true, tool: slug, result: (j as any)?.data ?? j });
   } catch (e: any) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/composio";
 
 // Composio schema inventory: list executable tools, optionally filtered by
 // toolkit. Tolerates schema variety — only tools with a usable name are
@@ -6,7 +7,8 @@ import { NextResponse } from "next/server";
 // Body: { composioKey, toolkit?, limit? }
 export async function POST(req: Request) {
   try {
-    const { composioKey, toolkit, limit } = await req.json();
+    const { composioKey: rawKey, toolkit, limit } = await req.json();
+    const composioKey = cleanComposioKey(rawKey);
     if (!composioKey) return NextResponse.json({ error: "Missing Composio API key. Add YOUR key on /plugins." }, { status: 400 });
     const n = Math.min(Math.max(Number(limit) || 100, 1), 200);
 
@@ -17,11 +19,10 @@ export async function POST(req: Request) {
     let lastErr = "";
     for (const url of attempts) {
       try {
-        const r = await fetch(url, { headers: { "x-api-key": composioKey } });
+        const r = await fetch(url, { headers: composioHeaders(composioKey) });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) {
-          const rawErr = (j as any)?.error ?? (j as any)?.message;
-          lastErr = `HTTP ${r.status}: ${typeof rawErr === "string" ? rawErr : JSON.stringify(rawErr ?? j).slice(0, 200)}`;
+          lastErr = composioErrorDetail(j, r.status);
           continue;
         }
         const raw = Array.isArray(j) ? j : (j as any)?.items || (j as any)?.tools || (j as any)?.data || [];

@@ -82,15 +82,17 @@ function toolNeeds(def: ToolDef): "github" | "vercel" | "composio" | null {
 }
 
 /** Live Composio reachability probe (bounded; never fails the run). */
-async function probeComposio(key: string | undefined): Promise<{ reachable: boolean; toolCount: number }> {
-  if (!has(key)) return { reachable: false, toolCount: 0 };
+async function probeComposio(rawKey: string | undefined): Promise<{ reachable: boolean; toolCount: number }> {
+  const { cleanComposioKey } = await import("./composio");
+  const key = cleanComposioKey(rawKey);
+  if (!key) return { reachable: false, toolCount: 0 };
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
     try {
       const r = await fetch("https://backend.composio.dev/api/v3/connected_accounts/list", {
         method: "GET",
-        headers: { "x-api-key": key as string } as Record<string, string>,
+        headers: { "x-api-key": key } as Record<string, string>,
         signal: ctrl.signal,
       });
       if (!r.ok) return { reachable: false, toolCount: 0 };
