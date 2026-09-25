@@ -2,7 +2,7 @@
 // Allows: repo root "" (list only), builds/, chats/, settings.json
 // Rejects: .., //, leading /, backslashes, >200 chars, hidden .github/, workflows, etc.
 
-const ALLOWED_FILE = /^(builds\/|chats\/|settings\.json$)/;
+const ALLOWED_FILE = /^(builds\/|chats\/|memory\/|settings\.json$)/;
 const ALLOWED_LIST_DIR = /^(builds(\/.*)?|chats(\/.*)?|settings\.json)?$/;
 
 export function cleanGithubPath(raw: unknown, opts?: { allowRoot?: boolean }): string | null {

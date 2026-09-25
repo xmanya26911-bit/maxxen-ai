@@ -6,6 +6,11 @@
  */
 import type { CodeBlock } from "./types";
 
+/** Stable identity for version tracking: explicit path, else language bucket. */
+export function blockKey(b: Pick<CodeBlock, "lang" | "path">): string {
+  return b.path || `${b.lang}:snippet`;
+}
+
 /** Languages the workspace pane knows how to render. */
 export const CODE_LANGS: ReadonlySet<string> = new Set([
   "html",

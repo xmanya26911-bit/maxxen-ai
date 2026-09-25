@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
@@ -63,8 +63,10 @@ export async function POST(req: Request) {
       };
       try {
         const client = new OpenAI({ apiKey, baseURL: url });
+        const { memoryBlock, sanitizeMemory } = await import("@/lib/memory");
+        const memBlock = memoryBlock(memory ? sanitizeMemory(memory) : null);
         const history: any[] = [
-          { role: "system", content: runtime.systemPrompt },
+          { role: "system", content: runtime.systemPrompt + (memBlock ? `\n\n${memBlock}` : "") },
           ...budgeted(sanitizeMessages(messages)),
         ];
         activity("Planning", "planning");

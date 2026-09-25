@@ -289,6 +289,199 @@ export const registry: ToolDef[] = [
     },
   },
   {
+    id: "preview_check",
+    kind: "deploy",
+    permission: "read",
+    description:
+      "Verify a live URL the way a browser agent would at HTTP level: status, page title, and an inventory of links/images/scripts. Use after every deploy (and after every fix) to confirm the app actually serves before reporting success. Never report a deployment as working without a passing preview_check.",
+    parameters: { url: "string, https URL to verify, e.g. https://my-app.vercel.app" },
+    run: async (args, ctx) => {
+      const raw = typeof args.url === "string" ? args.url.trim() : "";
+      if (!raw) return { ok: false, summary: "Provide a URL to check." };
+      let safe: string;
+      try {
+        const { assertSafeBaseURL } = await import("./net-guard");
+        const u = new URL(raw);
+        if (u.protocol !== "https:") return { ok: false, summary: "Only https URLs can be checked." };
+        assertSafeBaseURL(raw, "");
+        safe = u.toString();
+      } catch (e: any) {
+        return { ok: false, summary: `Unsafe or invalid URL: ${e?.message || e}` };
+      }
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 25000);
+      try {
+        const r = await fetch(safe, {
+          signal: ctrl.signal,
+          headers: { "user-agent": "Maxxen-verify/1.0" },
+          redirect: "follow",
+        });
+        const text = await r.text().catch(() => "");
+        const title = /<title[^>]*>([^<]{1,140})/i.exec(text)?.[1]?.trim() || "(no title)";
+        const links = new Set<string>();
+        const linkRe = /<(a|link)[^>]+href=["']([^"'#]+)["']/gi;
+        let m: RegExpExecArray | null;
+        while ((m = linkRe.exec(text)) && links.size < 20) {
+          if (!m[2].startsWith("data:") && !m[2].startsWith("javascript:")) links.add(m[2].slice(0, 120));
+        }
+        const scripts = (text.match(/<script\b/gi) || []).length;
+        const images = (text.match(/<img\b/gi) || []).length;
+        const ok = r.ok;
+        return {
+          ok,
+          summary: ok
+            ? `LIVE ✓ ${r.status} — "${title}" (${(text.length / 1024).toFixed(1)}KB, ${links.size} links, ${images} images, ${scripts} scripts).`
+            : `NOT LIVE ✗ HTTP ${r.status} at ${safe} — diagnose before reporting success.`,
+          data: { url: safe, status: r.status, title, links: [...links], images, scripts, bytes: text.length },
+        };
+      } catch (e: any) {
+        return {
+          ok: false,
+          summary: `Unreachable: ${e?.name === "AbortError" ? "timed out after 25s" : String(e?.message || e).slice(0, 200)}`,
+        };
+      } finally {
+        clearTimeout(t);
+      }
+    },
+  },
+  {
+    id: "project_create_branch",
+    kind: "project",
+    permission: "write",
+    description:
+      "Create a branch in one of the user's own repositories off main (or a given base). Part of the GitHub-native workflow: branch → changes → commit → pull request.",
+    parameters: {
+      repo: "string, repository name in the user's account",
+      branch: "string, new branch name, e.g. maxxen/artifact-login",
+      base: "optional base branch (default: the repo default)",
+    },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const repo = typeof args.repo === "string" ? args.repo.trim() : "";
+      const branch = typeof args.branch === "string" ? args.branch.trim().replace(/[^a-zA-Z0-9/_.-]+/g, "-") : "";
+      if (!repo || !branch || branch.length > 120)
+        return { ok: false, summary: "Provide a valid repo and branch name." };
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      try {
+        const { data: info } = await oct.rest.repos.get({ owner: me.login, repo });
+        const base = typeof args.base === "string" && args.base ? args.base : info.default_branch || "main";
+        const { data: ref } = await oct.rest.git.getRef({ owner: me.login, repo, ref: `heads/${base}` });
+        await oct.rest.git.createRef({ owner: me.login, repo, ref: `refs/heads/${branch}`, sha: ref.object.sha });
+        return {
+          ok: true,
+          summary: `Branch created: ${me.login}/${repo}@${branch} (from ${base}).`,
+          data: { repo, branch, base, url: `https://github.com/${me.login}/${repo}/tree/${branch}` },
+        };
+      } catch (e: any) {
+        const msg = String(e?.message || e);
+        if (/Reference already exists|422/i.test(msg))
+          return { ok: false, summary: `Branch "${branch}" already exists — reuse it or pick another name.` };
+        return { ok: false, summary: `Branch creation failed: ${msg.slice(0, 300)}` };
+      }
+    },
+  },
+  {
+    id: "project_open_pr",
+    kind: "project",
+    permission: "write",
+    description:
+      "Open a pull request in one of the user's own repositories (head → base, default base = repo default). Returns the PR URL. Requires explicit user confirmation for repos the user did not ask to publish.",
+    parameters: {
+      repo: "string, repository name in the user's account",
+      head: "string, source branch",
+      base: "optional target branch (default: repo default)",
+      title: "string, PR title",
+      body: "optional PR description",
+    },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      if (ctx.userConfirmed !== true) {
+        return { ok: false, summary: "Opening a pull request needs explicit confirmation.", needsConfirm: true };
+      }
+      const repo = typeof args.repo === "string" ? args.repo.trim() : "";
+      const head = typeof args.head === "string" ? args.head.trim() : "";
+      const title = typeof args.title === "string" ? args.title.trim().slice(0, 140) : "";
+      if (!repo || !head || !title) return { ok: false, summary: "Provide repo, head branch, and title." };
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      try {
+        const { data: info } = await oct.rest.repos.get({ owner: me.login, repo });
+        const base =
+          typeof args.base === "string" && args.base.trim() ? args.base.trim() : info.default_branch || "main";
+        const { data: pr } = await oct.rest.pulls.create({
+          owner: me.login,
+          repo,
+          head,
+          base,
+          title,
+          body: typeof args.body === "string" ? args.body.slice(0, 2000) : "Opened by Maxxen.",
+        });
+        return {
+          ok: true,
+          summary: `Pull request opened: ${pr.html_url} (${pr.state}).`,
+          data: { number: pr.number, url: pr.html_url, state: pr.state },
+        };
+      } catch (e: any) {
+        return { ok: false, summary: `PR creation failed: ${String(e?.message || e).slice(0, 300)}` };
+      }
+    },
+  },
+  {
+    id: "checkpoint_create",
+    kind: "project",
+    permission: "write",
+    description:
+      "Snapshot the current workspace (conversation id + saved-builds manifest) to maxxen-data/checkpoints/<id>.json BEFORE major AI changes. Returns a checkpoint id with a Restore affordance.",
+    parameters: { label: "string, what this checkpoint covers, e.g. before-auth-rewrite" },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const label =
+        typeof args.label === "string"
+          ? args.label.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 60) || "checkpoint"
+          : "checkpoint";
+      const id = `${Date.now().toString(36)}-${label}`;
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const manifest = {
+        id,
+        label,
+        createdAt: new Date().toISOString(),
+        note: "Restore = read this file, then re-apply its builds snapshot via project_write/project_commit_file.",
+      };
+      await oct.rest.repos.createOrUpdateFileContents({
+        owner: me.login,
+        repo: "maxxen-data",
+        path: `checkpoints/${id}.json`,
+        message: `maxxen: checkpoint ${id}`,
+        content: Buffer.from(JSON.stringify(manifest, null, 2)).toString("base64"),
+      });
+      return {
+        ok: true,
+        summary: `CHECKPOINT CREATED — before: ${id}. Restore reads checkpoints/${id}.json from YOUR repo.`,
+        data: { id, path: `checkpoints/${id}.json` },
+      };
+    },
+  },
+  {
+    id: "checkpoint_restore",
+    kind: "project",
+    permission: "read",
+    description: "Read a checkpoint manifest back (lists what the workspace held). The agent then re-applies the snapshot it describes.",
+    parameters: { id: "string, checkpoint id from checkpoint_create" },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const id = typeof args.id === "string" ? args.id.trim().replace(/[^a-zA-Z0-9_-]+/g, "") : "";
+      if (!id) return { ok: false, summary: "Provide a checkpoint id." };
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const f: any = await githubFile(me.login, "maxxen-data", oct, `checkpoints/${id}.json`);
+      if (!f) return { ok: false, summary: `Checkpoint "${id}" not found.` };
+      const text = Buffer.from(f.content || "", "base64").toString("utf8");
+      return { ok: true, summary: `Checkpoint "${id}" loaded — re-apply its snapshot now.`, data: { id, manifest: text.slice(0, 60000) } };
+    },
+  },
+  {
     id: "vercel_deploy_status",
     kind: "deploy",
     permission: "read",
@@ -425,6 +618,41 @@ const SCHEMAS: Record<string, unknown> = {
     type: "object",
     properties: { project: { type: "string", description: "Project name or id" } },
     required: ["project"],
+  },
+  preview_check: {
+    type: "object",
+    properties: { url: { type: "string", description: "https URL to verify" } },
+    required: ["url"],
+  },
+  project_create_branch: {
+    type: "object",
+    properties: {
+      repo: { type: "string", description: "Repository name in your account" },
+      branch: { type: "string", description: "New branch name" },
+      base: { type: "string", description: "Base branch (default: repo default)" },
+    },
+    required: ["repo", "branch"],
+  },
+  project_open_pr: {
+    type: "object",
+    properties: {
+      repo: { type: "string" },
+      head: { type: "string", description: "Source branch" },
+      base: { type: "string", description: "Target branch" },
+      title: { type: "string" },
+      body: { type: "string" },
+    },
+    required: ["repo", "head", "title"],
+  },
+  checkpoint_create: {
+    type: "object",
+    properties: { label: { type: "string", description: "What this checkpoint covers" } },
+    required: ["label"],
+  },
+  checkpoint_restore: {
+    type: "object",
+    properties: { id: { type: "string", description: "Checkpoint id" } },
+    required: ["id"],
   },
   vercel_deploy_status: {
     type: "object",

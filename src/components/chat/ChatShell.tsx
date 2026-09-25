@@ -11,6 +11,36 @@ import Sidebar from "./Sidebar";
 import WorkspacePane from "./WorkspacePane";
 import { extractBlocks } from "./blocks";
 import { uid, useChatStore } from "./store";
+
+/** Project memory for one conversation (null when untouched). Never throws. */
+function readMemoryCacheSafe(convId: string): unknown {
+  try {
+    const raw = window.localStorage.getItem(`maxxen_memory_${convId}`);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Refresh the local memory mirror from the user's repo (best-effort). */
+async function refreshMemoryCache(convId: string): Promise<void> {
+  try {
+    const token = window.localStorage.getItem("maxxen_github_token") || "";
+    if (!token || !convId) return;
+    const r = await fetch("/api/memory/load", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ githubToken: token, project: convId }),
+    });
+    const j = await r.json().catch(() => null);
+    if (r.ok && j?.memory) {
+      window.localStorage.setItem(`maxxen_memory_${convId}`, JSON.stringify(j.memory));
+    }
+  } catch {
+    /* offline — cached copy (if any) still applies */
+  }
+}
 import { useAuthStore } from "@/lib/auth-store";
 import { validateSession } from "@/lib/auth-api";
 import { useRouter } from "next/navigation";
@@ -79,6 +109,7 @@ export default function ChatShell() {
   const [mode, setMode] = useState<ChatMode>("chat");
   const [pinned, setPinned] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
+  const sendMessageRef = useRef<(text: string) => Promise<void>>(async () => {});
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const reduceMotion = useReducedMotion();
 
@@ -105,6 +136,24 @@ export default function ChatShell() {
     () => (lastAssistantContent ? extractBlocks(lastAssistantContent) : EMPTY_BLOCKS),
     [lastAssistantContent]
   );
+
+  // Every version of every file across the thread (oldest first) — powers
+  // the version history + diff + revert controls in the workspace pane.
+  const threadVersions = useMemo(() => {
+    const counters = new Map<string, number>();
+    const out: { key: string; path?: string; lang: string; code: string; label: string }[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant" || m.failed) continue;
+      const list = m.blocks && m.blocks.length ? m.blocks : extractBlocks(m.content);
+      for (const b of list) {
+        const key = b.path || `${b.lang}:snippet`;
+        const n = (counters.get(key) ?? 0) + 1;
+        counters.set(key, n);
+        out.push({ key, path: b.path, lang: b.lang, code: b.code, label: `v${n}` });
+      }
+    }
+    return out;
+  }, [messages]);
 
   // Auth gate: no session → /login; stale token → sign out + /login.
   useEffect(() => {
@@ -133,6 +182,24 @@ export default function ChatShell() {
     setPinnedConv(activeId);
     setPinned(true);
   }
+
+  // Pull this conversation's project memory into the local mirror so the
+  // next agent run carries it (best-effort; cached copy applies meanwhile).
+  useEffect(() => {
+    if (activeId) void refreshMemoryCache(activeId);
+  }, [activeId]);
+
+  // Visual-builder handoff: the preview pane dispatches element Explain /
+  // Rewrite requests here so they send as real user messages (current mode).
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      if (typeof text !== "string" || !text.trim()) return;
+      void sendMessageRef.current(text);
+    };
+    window.addEventListener("maxxen:send-prompt", onPrompt);
+    return () => window.removeEventListener("maxxen:send-prompt", onPrompt);
+  }, []);
 
   // Close overlays with Escape.
   useEffect(() => {
@@ -303,6 +370,7 @@ export default function ChatShell() {
             githubToken: store().getItem("maxxen_github_token") || undefined,
             vercelToken: store().getItem("maxxen_vercel_token") || undefined,
             composioKey: store().getItem("maxxen_composio_key") || undefined,
+            memory: readMemoryCacheSafe(convId),
           }),
           signal: controller.signal,
         });
@@ -481,6 +549,9 @@ export default function ChatShell() {
     },
     [runCompletion, runAgent, mode]
   );
+  useEffect(() => {
+    sendMessageRef.current = sendMessage;
+  });
 
   /** Re-runs a failed assistant turn in place (keeps the same message id). */
   const retryMessage = useCallback(
@@ -711,7 +782,7 @@ export default function ChatShell() {
       </div>
 
       {/* Pane 3 — docked workspace, only while artifacts exist (no empty void at xl+) */}
-      {blocks.length > 0 && <WorkspacePane blocks={blocks} streaming={streaming} convId={activeId} />}
+      {blocks.length > 0 && <WorkspacePane blocks={blocks} versions={threadVersions} streaming={streaming} convId={activeId} />}
 
       {/* Mobile slide-over */}
       <AnimatePresence>
@@ -771,6 +842,7 @@ export default function ChatShell() {
             >
               <WorkspacePane
                 blocks={blocks}
+                versions={threadVersions}
                 streaming={streaming}
                 convId={activeId}
                 onClose={closePane}

@@ -120,17 +120,30 @@ function capabilityBlock(caps: Capabilities, providerLabel: string): string {
     `GitHub: ${yn(caps.github.configured)}`,
   ];
   if (caps.github.configured) {
-    lines.push("Capabilities:", "read", "write", "create repository");
+    lines.push(
+      "Capabilities:",
+      "read",
+      "write",
+      "create repository",
+      "create branches",
+      "open pull requests",
+      "checkpoints"
+    );
   }
   lines.push("", `Vercel: ${yn(caps.vercel.configured)}`);
   if (caps.vercel.configured) {
-    lines.push("Capabilities:", "deploy", "inspect deployments");
+    lines.push("Capabilities:", "deploy", "inspect deployments", "verify live URLs");
   }
   lines.push("", `Composio: ${yn(caps.composio.configured && caps.composio.reachable)}`);
   if (caps.composio.configured && caps.composio.reachable) {
     lines.push(`Connected toolkits: ${caps.composio.toolCount}`, "Additional tools available");
   }
   lines.push("", `AI provider: ${providerLabel}`, "", "Credentials are managed by Maxxen's runtime.", "Never expose or request credentials.");
+  lines.push(
+    "",
+    "Build→verify loop: after every deploy, run preview_check on the live URL before reporting success.",
+    '"Upload to Vercel" means deploy. Never report a deployment as working without a passing check.'
+  );
   return lines.join("\n");
 }
 

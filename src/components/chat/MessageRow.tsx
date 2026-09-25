@@ -14,6 +14,75 @@ function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Dependency names actually imported/required by generated code. */
+function extractDeps(code: string): string[] {
+  const found = new Set<string>();
+  const fromRe = /(?:import|export)[^'"]*?from\s*["']([^"']+)["']/g;
+  const reqRe = /require\(\s*["']([^"']+)["']\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = fromRe.exec(code))) {
+    const name = m[1].split("/")[0].replace(/^@/, "@");
+    if (name && !name.startsWith(".") && name.length < 60) found.add(name);
+  }
+  while ((m = reqRe.exec(code))) {
+    const name = m[1].split("/")[0];
+    if (name && !name.startsWith(".") && name.length < 60) found.add(name);
+  }
+  return [...found];
+}
+
+/**
+ * Project analytics — computed live from THIS response's code blocks and
+ * rendered at the end of the assistant message: files, lines, components,
+ * API routes, dependencies. Real measurements of generated output, never
+ * invented build/test numbers.
+ */
+function ProjectAnalytics({ blocks }: { blocks: NonNullable<Message["blocks"]> }) {
+  const stats = useMemo(() => {
+    let lines = 0;
+    let components = 0;
+    let apiRoutes = 0;
+    const deps = new Set<string>();
+    for (const b of blocks) {
+      lines += b.code.split("\n").length;
+      if (b.path && /(^|\/)api\/.+\/route\.[jt]s$/.test(b.path)) apiRoutes += 1;
+      else if (["tsx", "jsx"].includes(b.lang)) {
+        components += 1;
+      } else if (
+        ["ts", "js"].includes(b.lang) &&
+        /export\s+(default\s+)?(function|const|class)\s+[A-Z]/.test(b.code)
+      ) {
+        components += 1;
+      }
+      for (const d of extractDeps(b.code)) deps.add(d);
+    }
+    return { files: blocks.length, lines, components, apiRoutes, deps: deps.size };
+  }, [blocks]);
+
+  const cells: [string, string][] = [
+    ["Files", String(stats.files)],
+    ["Lines", stats.lines.toLocaleString()],
+    ["Components", String(stats.components)],
+    ["API routes", String(stats.apiRoutes)],
+    ["Dependencies", String(stats.deps)],
+  ];
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.015]" aria-label="Project analytics">
+      <p className="border-b border-white/[0.06] px-3 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-white/35">
+        Project analytics
+      </p>
+      <dl className="grid grid-cols-3 gap-px sm:grid-cols-5">
+        {cells.map(([label, value]) => (
+          <div key={label} className="px-3 py-2">
+            <dt className="font-mono text-[9px] uppercase tracking-[0.12em] text-white/35">{label}</dt>
+            <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-white/90">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 export interface MessageRowProps {
   message: Message;
   /** True only for the assistant message currently being streamed. */
@@ -127,6 +196,9 @@ function MessageRowImpl({ message, streaming = false, onRetry }: MessageRowProps
                   />
                 )}
               </div>
+            )}
+            {message.role === "assistant" && !streaming && message.blocks && message.blocks.length > 0 && (
+              <ProjectAnalytics blocks={message.blocks} />
             )}
             <time className="mt-1.5 block font-mono text-[10px] text-muted-foreground opacity-0 transition-opacity duration-200 group-hover:opacity-100">
               {time}
