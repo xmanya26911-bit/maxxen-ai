@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     if (!key) {
       return NextResponse.json({ error: "Missing Composio API key. Add in Settings > Plugins." }, { status: 400 });
     }
-    const res = await fetch("https://backend.composio.dev/api/v3/connected_accounts/list", {
+    const res = await fetch("https://backend.composio.dev/api/v3/connected_accounts", {
       method: "GET",
       headers: composioHeaders(key),
     });

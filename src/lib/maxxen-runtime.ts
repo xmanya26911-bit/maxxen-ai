@@ -90,7 +90,7 @@ async function probeComposio(rawKey: string | undefined): Promise<{ reachable: b
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
     try {
-      const r = await fetch("https://backend.composio.dev/api/v3/connected_accounts/list", {
+      const r = await fetch("https://backend.composio.dev/api/v3/connected_accounts", {
         method: "GET",
         headers: { "x-api-key": key } as Record<string, string>,
         signal: ctrl.signal,

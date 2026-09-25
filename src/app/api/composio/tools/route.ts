@@ -38,11 +38,15 @@ export async function POST(req: Request) {
             skipped++;
             continue;
           }
+          const tk =
+            typeof t?.toolkit === "object" && t.toolkit !== null
+              ? String((t.toolkit as { slug?: unknown }).slug || "")
+              : String(t?.toolkit_slug || t?.toolkit || "");
           tools.push({
             slug,
             name: t?.name || slug,
-            description: String(t?.description || "").slice(0, 300),
-            toolkit: t?.toolkit_slug || t?.toolkit || toolkit || "unknown",
+            description: String(t?.description || t?.human_description || "").slice(0, 300),
+            toolkit: tk || toolkit || "unknown",
           });
         }
         return NextResponse.json({ ok: true, toolkit: toolkit || "all", count: tools.length, skipped, tools: tools.slice(0, n) });

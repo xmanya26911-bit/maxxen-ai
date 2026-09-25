@@ -33,10 +33,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const payload: Record<string, unknown> = { tool_slug: slug, arguments: args };
+    const payload: Record<string, unknown> = { arguments: args };
     if (connectedAccountId) payload.connected_account_id = connectedAccountId;
 
-    const r = await fetch("https://backend.composio.dev/api/v3/tools/execute", {
+    const r = await fetch(`https://backend.composio.dev/api/v3/tools/execute/${encodeURIComponent(slug)}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...composioHeaders(composioKey) },
       body: JSON.stringify(payload),

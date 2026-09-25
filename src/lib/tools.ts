@@ -561,9 +561,9 @@ export const registry: ToolDef[] = [
       // Human-gated: ignore model-supplied args.confirm, require ctx.userConfirmed.
       if (destructive && ctx.userConfirmed !== true)
         return { ok: false, summary: `“${slug}” changes the outside world — confirm explicitly first.`, needsConfirm: true };
-      const payload: Record<string, unknown> = { tool_slug: slug, arguments: params };
+      const payload: Record<string, unknown> = { arguments: params };
       if (typeof args.connectedAccountId === "string" && args.connectedAccountId) payload.connected_account_id = args.connectedAccountId;
-      const r = await fetch("https://backend.composio.dev/api/v3/tools/execute", {
+      const r = await fetch(`https://backend.composio.dev/api/v3/tools/execute/${encodeURIComponent(slug)}`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-api-key": key },
         body: JSON.stringify(payload),
