@@ -1,6 +1,3 @@
-// Fallback store only (primary path is stateless tickets — zero server storage).
-// Entries live max 10 minutes: expired ones are purged on every auth request
-// and successful/failed-terminal verifies delete immediately, so memory stays tiny.
 type Entry = { code: string; expiresAt: number; attempts: number };
 const g = globalThis as any;
 if (!g.__maxxenOtp) g.__maxxenOtp = new Map<string, Entry>();
@@ -16,15 +13,10 @@ export function purgeExpired() {
 }
 
 export function makeCode() {
-  // crypto-secure 6-digit code (no Math.random predictability)
   const { randomInt } = require("crypto") as typeof import("crypto");
   return String(randomInt(100000, 1000000));
 }
 
-// --- Stateless-ticket brute-force + replay guards (serverless-safe in-memory) ---
-// These are best-effort per-instance limits + single-use tracking. They raise
-// the bar significantly vs unlimited attempts, even though a fully distributed
-// limiter (Upstash/Vercel KV) is still recommended for production scale.
 type TicketGuard = { count: number; expiresAt: number };
 const tg = globalThis as any;
 if (!tg.__maxxenTicketAttempts) tg.__maxxenTicketAttempts = new Map<string, TicketGuard>();
@@ -33,18 +25,16 @@ export const ticketAttempts: Map<string, TicketGuard> = tg.__maxxenTicketAttempt
 export const usedTickets: Map<string, number> = tg.__maxxenUsedTickets;
 
 export function ticketKey(email: string, ticket: string) {
-  // bind attempts to email + ticket so one attacker can't burn another user's budget
-  return `${email.toLowerCase()}|${String(ticket).slice(0, 128)}`;
+  return email.toLowerCase() + "|" + String(ticket).slice(0, 128);
 }
 
 export function checkTicketRateLimit(email: string, ticket: string): boolean {
   const now = Date.now();
-  // purge expired
   for (const [k, v] of ticketAttempts) if (v.expiresAt <= now) ticketAttempts.delete(k);
   for (const [k, exp] of usedTickets) if (exp <= now) usedTickets.delete(k);
   const k = ticketKey(email, ticket);
   const cur = ticketAttempts.get(k);
-  if (cur && cur.count >= 6) return false; // 6 tries per ticket, then must request new code
+  if (cur && cur.count >= 6) return false;
   return true;
 }
 
@@ -68,13 +58,11 @@ export function isTicketUsed(ticket: string) {
 
 export function markTicketUsed(ticket: string, ttlMs: number) {
   usedTickets.set(String(ticket), Date.now() + ttlMs);
-  // free attempt budget on success
   for (const [k] of ticketAttempts) {
-    if (k.endsWith(`|${String(ticket).slice(0, 128)}`)) ticketAttempts.delete(k);
+    if (k.endsWith("|" + String(ticket).slice(0, 128))) ticketAttempts.delete(k);
   }
 }
 
-// Simple per-email send-otp rate limit: 5 sends / 10 min per instance.
 const sg = globalThis as any;
 if (!sg.__maxxenSendLimits) sg.__maxxenSendLimits = new Map<string, { count: number; windowStart: number }>();
 export const sendLimits: Map<string, { count: number; windowStart: number }> = sg.__maxxenSendLimits;
