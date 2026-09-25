@@ -1,48 +1,30 @@
-/* MAXXEN design tokens — single source of truth for the console surfaces
-   (settings, shared kit, future admin). Namespaced --mx-* so the editorial
-   systems (landing .lp-*, chat .app-shell) are never affected.
-   Landing + chat keep their own identities intentionally. */
-
 :root {
-  /* surfaces */
-  --mx-bg: #07070d;
-  --mx-surface: #0d0d14;
-  --mx-surface-2: #12121a;
+  --mx-bg: #09090a;
+  --mx-surface: #0c0c0e;
+  --mx-surface-2: #161618;
   --mx-surface-hover: rgba(255, 255, 255, 0.045);
-
-  /* borders — barely visible until needed */
   --mx-border: rgba(255, 255, 255, 0.08);
   --mx-border-strong: rgba(255, 255, 255, 0.14);
   --mx-border-focus: rgba(203, 220, 255, 0.45);
-
-  /* text hierarchy: primary / secondary / tertiary / metadata */
   --mx-fg: #f2f2ef;
-  --mx-muted: #a3a3ab;
+  --mx-muted: #a7a7ae;
   --mx-faint: #6d6d75;
-  --mx-meta: #52525a;
-
-  /* accent — used sparingly: primary actions, current state, links */
-  --mx-accent: #dfe7f5;
+  --mx-meta: #4a4a52;
+  --mx-accent: #cbdcff;
   --mx-accent-ink: #101014;
-  --mx-accent-dim: rgba(203, 220, 255, 0.1);
+  --mx-accent-dim: rgba(203, 220, 255, 0.08);
   --mx-link: #b9c9e7;
-
-  /* semantic */
   --mx-success: #b9d8bd;
   --mx-warning: #e3cf9e;
   --mx-danger: #e0a3a3;
   --mx-info: #b9c9e7;
-
-  /* type scale */
-  --mx-display: clamp(34px, 4.6vw, 60px);
+  --mx-display: clamp(30px, 4vw, 44px);
   --mx-h2: 20px;
   --mx-h3: 16px;
   --mx-body: 14px;
   --mx-label: 12px;
   --mx-meta-size: 11px;
   --mx-code-size: 12.5px;
-
-  /* spacing scale (4pt base) */
   --mx-1: 4px;
   --mx-2: 8px;
   --mx-3: 12px;
@@ -51,19 +33,14 @@
   --mx-6: 24px;
   --mx-8: 32px;
   --mx-12: 48px;
-
-  /* radii — three steps only */
-  --mx-r-sm: 7px;
-  --mx-r-md: 11px;
-  --mx-r-lg: 16px;
-
-  /* motion — fast, subtle, consistent */
+  --mx-r-sm: 6px;
+  --mx-r-md: 8px;
+  --mx-r-lg: 12px;
   --mx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --mx-fast: 120ms;
   --mx-med: 220ms;
 }
 
-/* quiet console button — replaces gradient violet primary */
 .mx-btn {
   display: inline-flex;
   align-items: center;
@@ -76,11 +53,9 @@
   font-weight: 650;
   padding: 10px 18px;
   cursor: pointer;
-  transition: transform var(--mx-fast) var(--mx-ease), background var(--mx-fast) var(--mx-ease), opacity var(--mx-fast) var(--mx-ease);
 }
-.mx-btn:hover { background: #fff; transform: translateY(-1px); }
-.mx-btn:active { transform: translateY(0); }
-.mx-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.mx-btn:hover { background: #fff; }
+.mx-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .mx-btn:focus-visible { outline: 2px solid var(--mx-border-focus); outline-offset: 2px; }
 
 .mx-btn-ghost {
@@ -95,13 +70,11 @@
   font-weight: 550;
   padding: 9px 16px;
   cursor: pointer;
-  transition: color var(--mx-fast) var(--mx-ease), border-color var(--mx-fast) var(--mx-ease), background var(--mx-fast) var(--mx-ease);
 }
 .mx-btn-ghost:hover { color: var(--mx-fg); border-color: var(--mx-border-strong); background: var(--mx-surface-hover); }
 .mx-btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
 .mx-btn-ghost:focus-visible { outline: 2px solid var(--mx-border-focus); outline-offset: 2px; }
 
-/* quiet field */
 .mx-field {
   width: 100%;
   background: rgba(0, 0, 0, 0.4);
@@ -112,20 +85,18 @@
   outline: none;
   font-size: var(--mx-body);
   font-family: inherit;
-  transition: border-color var(--mx-fast) var(--mx-ease), box-shadow var(--mx-fast) var(--mx-ease);
 }
 .mx-field::placeholder { color: var(--mx-meta); }
-.mx-field:focus { border-color: var(--mx-border-focus); box-shadow: 0 0 0 3px rgba(202, 219, 255, 0.07); }
+.mx-field:focus { border-color: var(--mx-border-focus); }
 .mx-field:disabled { opacity: 0.5; }
 
-/* quiet panel — tonal separation, hairline border, no glow */
 .mx-panel {
-  background: linear-gradient(180deg, var(--mx-surface), rgba(13, 13, 20, 0.6));
+  background: var(--mx-surface);
   border: 1px solid var(--mx-border);
   border-radius: var(--mx-r-lg);
   padding: var(--mx-6);
 }
-.mx-panel h2 { margin: 0 0 var(--mx-2); font-size: var(--mx-h2); font-weight: 700; letter-spacing: -0.02em; }
+.mx-panel h2 { margin: 0 0 var(--mx-2); font-size: var(--mx-h2); font-weight: 700; }
 .mx-panel > p.sub { margin: 0; color: var(--mx-muted); font-size: 13px; line-height: 1.6; }
 .mx-panel .body { margin-top: var(--mx-4); display: grid; gap: var(--mx-3); }
 
@@ -150,13 +121,7 @@
   background: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: color var(--mx-fast) var(--mx-ease), background var(--mx-fast) var(--mx-ease);
 }
 .mx-tab:hover { color: var(--mx-fg); background: var(--mx-surface-hover); }
 .mx-tab[aria-pressed="true"] { color: var(--mx-fg); background: var(--mx-surface-2); border-color: var(--mx-border); }
 .mx-tab:focus-visible { outline: 2px solid var(--mx-border-focus); outline-offset: 2px; }
-
-@media (prefers-reduced-motion: reduce) {
-  .mx-btn, .mx-btn-ghost { transition: none; }
-  .mx-btn:hover { transform: none; }
-}
