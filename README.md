@@ -1,38 +1,18 @@
-# Maxxen AI — M-A-X-X-E-N + AI
+# Maxxen AI
 
-Multipurpose agentic AI: chat + build websites/apps + plugins.
-- **Hosting:** YOUR Vercel (`maxxen.vercel.app`)
-- **Storage:** USER's GitHub repo `maxxen-data` (never owner's)
-- **Plugins:** USER's Composio key → user connects gmail/github/notion/slack/vercel etc.
-- **LLM:** BYOK — user pastes Gemini + ChatGPT keys + custom baseURL. Zero owner cost.
-- **Auth:** Email OTP 6-digit from Gmail SMTP (Google App Password).
+Multipurpose agentic AI: chat plus build websites and apps plus plugins.
+- Hosting: YOUR Vercel (maxxen.vercel.app)
+- Storage: USER GitHub repo maxxen-data (never owner s)
+- Plugins: USER Composio key for gmail github notion slack vercel etc.
+- LLM: BYOK pasted keys plus custom baseURL. Zero owner cost.
+- Auth: Email OTP 6-digit from Gmail SMTP plus optional Google OAuth.
 
-## 1. Setup locally
-```bash
-npm install
-cp .env.example .env.local
-# fill GMAIL_EMAIL + GMAIL_APP_PASSWORD (do NOT commit!)
-npm run dev
-```
+Setup locally: npm install, copy .env.example to .env.local, fill GMAIL_EMAIL plus GMAIL_APP_PASSWORD (do NOT commit), npm run dev.
 
-## 2. Required env (local `.env.local` AND Vercel dashboard)
-- `GMAIL_EMAIL`, `GMAIL_APP_PASSWORD` (Google App Password, 2-Step Verification on)
-- Optional: `OTP_SECRET`, `COMPOSIO_API_KEY`, `GOOGLE_CLIENT_ID` (+ `NEXT_PUBLIC_GOOGLE_CLIENT_ID`)
+Required env in .env.local AND Vercel dashboard: GMAIL_EMAIL, GMAIL_APP_PASSWORD. Optional: OTP_SECRET, COMPOSIO_API_KEY, GOOGLE_CLIENT_ID.
 
-## 3. How user data flows
-- Login OTP: server sends via Gmail SMTP, verifies code (10 min, rate-limited, single-use tickets).
-- Chat: browser sends BYOK key per-request to `/api/chat` or `/api/chat/stream`. Key never saved server-side.
-- Save: browser sends YOUR `githubToken` to `/api/github/save` → `maxxen-data` in YOUR account.
-- Plugins: browser sends YOUR `composioKey`. Connect toolkits at app.composio.dev.
-- Hosting: YOUR `vercelToken` deploys to YOUR project via `/api/vercel/deploy`.
+Data flow: OTP via Gmail SMTP (10 min, rate-limited, single-use). Chat sends BYOK key per-request to /api/chat or /api/chat/stream. Save uses YOUR githubToken to maxxen-data in YOUR account. Plugins use YOUR composioKey. Hosting uses YOUR vercelToken via /api/vercel/deploy.
 
-## 4. Security
-- Never commit `.env.local`. Secrets stay in env vars, never in code.
-- `npm test` runs guard unit tests (27 passing). `npx tsc --noEmit` must stay clean.
+Security: never commit .env.local. npm test runs guard unit tests. npx tsc --noEmit stays clean.
 
-## Structure
-- `app/chat` — 3-pane workspace (sidebar, conversation, inspector)
-- `app/api/auth/*` — OTP + Google + session
-- `app/api/chat/*`, `app/api/agent/run` — BYOK chat, streaming, tool loop
-- `app/api/github/*`, `app/api/vault/*` — per-user storage
-- `app/api/composio/*`, `app/api/vercel/*` — plugins and deploys
+Structure: app/chat is the 3-pane workspace. app/api/auth covers OTP plus Google plus session. app/api/chat plus app/api/agent/run cover BYOK chat, streaming, tool loop. app/api/github plus app/api/vault cover per-user storage. app/api/composio plus app/api/vercel cover plugins and deploys.
