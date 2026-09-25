@@ -256,6 +256,182 @@ export default function ChatShell() {
     []
   );
 
+  const [activities, setActivities] = useState<string[]>([]);
+  const [agentActive, setAgentActive] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    summary: string;
+    tool: string;
+    convId: string;
+    assistantId: string;
+  } | null>(null);
+
+  const pushActivity = useCallback((line: string) => {
+    setActivities((prev) => [...prev.slice(-29), line]);
+  }, []);
+
+  /**
+   * Agent loop client: POST /api/agent/run (SSE: activity/delta/needsConfirm/
+   * done/error). Reads run freely; world-changing tools stop at needsConfirm
+   * and only execute after the user confirms (server enforces via ctx).
+   */
+  const runAgent = useCallback(
+    async (convId: string, assistantId: string, history: ApiMessage[]) => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const endpoint = endpointCredentials();
+      if (!endpoint) {
+        useChatStore.getState().patchMessage(convId, assistantId, {
+          failed: true,
+          content: "Add your provider key in Settings → Endpoint, then retry.",
+        });
+        return;
+      }
+      const store = () => window.localStorage;
+      let acc = "";
+      useChatStore.getState().setStreaming(true);
+      setAgentActive(true);
+      setActivities([]);
+      setPinned(true);
+      setPendingConfirm(null);
+      try {
+        const res = await fetch("/api/agent/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: history,
+            ...endpoint,
+            githubToken: store().getItem("maxxen_github_token") || undefined,
+            vercelToken: store().getItem("maxxen_vercel_token") || undefined,
+            composioKey: store().getItem("maxxen_composio_key") || undefined,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          let message = `Agent failed with status ${res.status}.`;
+          try {
+            const data = (await res.json()) as { error?: unknown };
+            if (typeof data?.error === "string" && data.error.trim()) message = data.error;
+          } catch {
+            /* body was not JSON */
+          }
+          throw new Error(message);
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop() ?? "";
+          for (const part of parts) {
+            const line = part.split("\n").find((l) => l.startsWith("data:"));
+            if (!line) continue;
+            let ev: {
+              activity?: { phase?: string; text?: string };
+              delta?: string;
+              needsConfirm?: boolean;
+              summary?: string;
+              tool?: string;
+              done?: boolean;
+              error?: string;
+            } | null = null;
+            try {
+              ev = JSON.parse(line.slice(5));
+            } catch {
+              continue;
+            }
+            if (!ev) continue;
+            if (ev.error) throw new Error(ev.error);
+            if (ev.activity) {
+              const mark =
+                ev.activity.phase === "error" ? "✗ " : ev.activity.phase === "planning" ? "◌ " : "✓ ";
+              pushActivity(`${mark}${ev.activity.text ?? ""}`);
+            }
+            if (ev.needsConfirm) {
+              setPendingConfirm({
+                summary: String(ev.summary ?? "this action"),
+                tool: String(ev.tool ?? "tool"),
+                convId,
+                assistantId,
+              });
+            }
+            if (typeof ev.delta === "string" && ev.delta) {
+              acc += ev.delta;
+              const snap = acc;
+              useChatStore.getState().patchMessage(convId, assistantId, { content: snap });
+            }
+            if (ev.done) {
+              useChatStore.getState().patchMessage(
+                convId,
+                assistantId,
+                acc.trim()
+                  ? { content: acc, failed: false, blocks: extractBlocks(acc) }
+                  : { failed: true, content: "The agent returned an empty response." }
+              );
+            }
+          }
+        }
+      } catch (err) {
+        if (controller.signal.aborted) {
+          useChatStore
+            .getState()
+            .patchMessage(convId, assistantId, { content: acc ? `${acc} ⏹` : "⏹ Stopped." });
+        } else {
+          const message = err instanceof Error && err.message ? err.message : "Agent failed.";
+          useChatStore.getState().patchMessage(convId, assistantId, { failed: true, content: message });
+        }
+      } finally {
+        abortRef.current = null;
+        useChatStore.getState().setStreaming(false);
+        setAgentActive(false);
+      }
+    },
+    [pushActivity]
+  );
+
+  /** User confirmed a pending dangerous action — resend as an explicit human gesture. */
+  const confirmPending = useCallback(async () => {
+    const pending = pendingConfirm;
+    if (!pending || agentActive) return;
+    setPendingConfirm(null);
+    setActivities([]);
+    const snapshot = useChatStore.getState();
+    const conv = snapshot.conversations.find((c) => c.id === pending.convId);
+    if (!conv) return;
+    const userText = `Confirmed: proceed with exactly this action and nothing else:\n${pending.summary}`;
+    snapshot.appendMessage(pending.convId, {
+      id: uid(),
+      role: "user",
+      content: userText,
+      createdAt: Date.now(),
+    });
+    const after = useChatStore.getState();
+    const fresh = after.conversations.find((c) => c.id === pending.convId);
+    const history = toApiHistory(fresh ? fresh.messages : []);
+    const nextAssistantId = uid();
+    after.appendMessage(pending.convId, {
+      id: nextAssistantId,
+      role: "assistant",
+      content: "",
+      createdAt: Date.now(),
+      mode: "agent",
+    });
+    await runAgent(pending.convId, nextAssistantId, history);
+  }, [pendingConfirm, agentActive, runAgent]);
+
+  const declinePending = useCallback(() => {
+    const pending = pendingConfirm;
+    if (!pending) return;
+    setPendingConfirm(null);
+    useChatStore
+      .getState()
+      .patchMessage(pending.convId, pending.assistantId, {
+        content: "Declined — nothing was executed. Tell me how to proceed instead.",
+      });
+  }, [pendingConfirm]);
+
   /** Appends the user turn (naming the chat if it's the first) and streams a reply. */
   const sendMessage = useCallback(
     async (raw: string, modeOverride?: ChatMode) => {
@@ -297,9 +473,13 @@ export default function ChatShell() {
         mode: requestMode,
       });
 
-      await runCompletion(convId, assistantId, history, requestMode);
+      if (requestMode === "agent") {
+        await runAgent(convId, assistantId, history);
+      } else {
+        await runCompletion(convId, assistantId, history, requestMode);
+      }
     },
-    [runCompletion, mode]
+    [runCompletion, runAgent, mode]
   );
 
   /** Re-runs a failed assistant turn in place (keeps the same message id). */
@@ -314,10 +494,15 @@ export default function ChatShell() {
       const idx = conv.messages.findIndex((m) => m.id === assistantMsg.id);
       if (idx < 0) return;
       const history = toApiHistory(conv.messages.slice(0, idx));
-      snapshot.patchMessage(conv.id, assistantMsg.id, { failed: false, content: "", mode });
-      await runCompletion(conv.id, assistantMsg.id, history, mode);
+      const retryMode = assistantMsg.mode ?? mode;
+      snapshot.patchMessage(conv.id, assistantMsg.id, { failed: false, content: "", mode: retryMode });
+      if (retryMode === "agent") {
+        await runAgent(conv.id, assistantMsg.id, history);
+      } else {
+        await runCompletion(conv.id, assistantMsg.id, history, retryMode);
+      }
     },
-    [runCompletion, mode]
+    [runCompletion, runAgent, mode]
   );
 
   const stopGenerating = useCallback(() => {
@@ -452,6 +637,62 @@ export default function ChatShell() {
         {/* Composer */}
         <div className="shrink-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
           <div className="mx-auto max-w-3xl">
+            {pendingConfirm && (
+              <div
+                role="alertdialog"
+                aria-label={`Confirm ${pendingConfirm.tool}`}
+                className="mb-2.5 rounded-xl border border-amber-200/25 bg-amber-100/[0.05] p-3.5"
+              >
+                <p className="text-[13px] font-medium text-white">
+                  Agent requests approval
+                  <span className="ml-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/40">
+                    {pendingConfirm.tool}
+                  </span>
+                </p>
+                <p className="mt-1 line-clamp-3 text-[12.5px] leading-relaxed text-white/65">
+                  {pendingConfirm.summary}
+                </p>
+                <div className="mt-2.5 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={confirmPending}
+                    className="mx-focus mx-press inline-flex h-8 items-center rounded-lg bg-white px-3.5 text-xs font-semibold text-black transition-colors hover:bg-white/90"
+                  >
+                    Confirm →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={declinePending}
+                    className="mx-focus mx-press inline-flex h-8 items-center rounded-lg border border-white/10 bg-white/[0.04] px-3.5 text-xs font-medium text-white transition-colors hover:bg-white/[0.08]"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            )}
+            {(agentActive || activities.length > 0) && (
+              <div
+                aria-live="polite"
+                aria-label="Agent activity"
+                className="mb-2.5 grid max-h-36 gap-1 overflow-auto rounded-xl border border-white/[0.07] bg-black/50 p-3 font-mono text-[11px] leading-relaxed"
+              >
+                {activities.slice(-8).map((a, i) => (
+                  <div
+                    key={`${i}-${a.slice(0, 24)}`}
+                    className={
+                      a.startsWith("✗")
+                        ? "text-red-200/80"
+                        : a.startsWith("◌")
+                          ? "text-white/50"
+                          : "text-white/70"
+                    }
+                  >
+                    {a}
+                  </div>
+                ))}
+                {agentActive && <div className="text-white/50">◌ working…</div>}
+              </div>
+            )}
             <Composer
               streaming={streaming}
               mode={mode}
