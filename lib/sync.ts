@@ -1,8 +1,3 @@
-// Browser-side vault sync. Server (per-gmail encrypted vault in the user's
-// own GitHub repo) is the source of truth; localStorage is a fast cache.
-// All network failures are best-effort: the UI always keeps working offline
-// with whatever is cached locally.
-
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
   if (v === undefined) return localStorage.getItem(k) || "";
@@ -11,7 +6,6 @@ const ls = (k: string, v?: string) => {
   return v;
 };
 
-// localStorage key -> vault field
 const PREF_MAP: Record<string, string> = {
   maxxen_baseurl: "baseURL",
   maxxen_model: "model",
@@ -29,10 +23,7 @@ export async function pullVault(session: string): Promise<{ ok: boolean; applied
   try {
     const githubToken = ls("maxxen_github_token");
     if (!githubToken) return { ok: false, applied: 0, message: "Add your GitHub token once — then everything syncs per account." };
-    const r = await fetch("/api/vault/load", {
-      method: "POST",
-      body: JSON.stringify({ session, githubToken }),
-    });
+    const r = await fetch("/api/vault/load", { method: "POST", body: JSON.stringify({ session, githubToken }) });
     const j = await r.json();
     if (j.error) return { ok: false, applied: 0, message: j.error };
     let applied = 0;
@@ -51,7 +42,7 @@ export async function pullVault(session: string): Promise<{ ok: boolean; applied
       }
     }
     if (j.fresh) return { ok: true, applied: 0, message: "Fresh vault created for this account." };
-    return { ok: true, applied, message: applied ? `Restored ${applied} synced item${applied === 1 ? "" : "s"}.` : "Vault empty — save once to start syncing." };
+    return { ok: true, applied, message: applied ? ("Restored " + applied + " synced item" + (applied === 1 ? "" : "s") + ".") : "Vault empty — save once to start syncing." };
   } catch (e: any) {
     return { ok: false, applied: 0, message: e.message || "Sync failed — using local values." };
   }
@@ -71,10 +62,7 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
       const v = ls(local);
       if (v) secrets[remote] = v;
     }
-    const r = await fetch("/api/vault/save", {
-      method: "POST",
-      body: JSON.stringify({ session, githubToken, prefs, secrets }),
-    });
+    const r = await fetch("/api/vault/save", { method: "POST", body: JSON.stringify({ session, githubToken, prefs, secrets }) });
     const j = await r.json();
     if (j.error) return { ok: false, message: j.error };
     return { ok: true, message: j.savedSecrets ? "Synced + encrypted to YOUR repo." : "Preferences synced to YOUR repo." };
@@ -84,16 +72,11 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
 }
 
 export async function forgetVault(session: string): Promise<{ ok: boolean; message: string }> {
-  // Complete reset: server wipes prefs + vault (wipe:true), browser drops
-  // every maxxen_* key except the login session itself.
   const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
   try {
     const githubToken = ls("maxxen_github_token");
     if (githubToken) {
-      await fetch("/api/vault/save", {
-        method: "POST",
-        body: JSON.stringify({ session, githubToken, prefs: {}, secrets: {}, wipe: true }),
-      });
+      await fetch("/api/vault/save", { method: "POST", body: JSON.stringify({ session, githubToken, prefs: {}, secrets: {}, wipe: true }) });
     }
     if (typeof window !== "undefined") {
       for (let i = localStorage.length - 1; i >= 0; i--) {
