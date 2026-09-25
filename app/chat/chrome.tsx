@@ -1,35 +1,20 @@
 "use client";
 import { memo } from "react";
-
-// Shared /chat chrome: types, storage helper, brand marks, icons, memoized
-// preview frame, endpoint menu styling, nav + provider constants. Extracted
-// so the page stays focused on chat state and layout.
+import type { ReactNode } from "react";
 
 export type Msg = { role: "user" | "assistant"; content: string; html?: string; at: string };
 export type SavedChat = { id: string; title: string; messages: Msg[]; at: string };
-
 export const nav = ["Home", "Chats", "Projects", "Artifacts", "Agents", "Plugins"];
 export const navIcons = ["home", "chat", "grid", "box", "bolt", "layers"];
 export const tools = ["Chat", "Build", "Code", "Design", "Research", "Deploy"];
 export const suggestions = ["Build a landing page", "Create a dashboard", "Design an app", "Connect an API"];
-export const NAV_HREF: Record<string, string> = {
-  Home: "/",
-  Chats: "/chat",
-  Projects: "/projects",
-  Artifacts: "/artifacts",
-  Agents: "/agents",
-  Plugins: "/plugins",
-};
-
-// One-tap providers. Honest constraint: no provider offers login-for-API,
-// so one pasted key is the whole setup — presets remove everything else.
+export const NAV_HREF: Record<string, string> = { Home: "/", Chats: "/chat", Projects: "/projects", Artifacts: "/artifacts", Agents: "/agents", Plugins: "/plugins" };
 export const PROVIDERS = [
-  { id: "openai", glyph: "◈", label: "ChatGPT", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini", keyHint: "sk-… from platform.openai.com/api-keys" },
-  { id: "anthropic", glyph: "✶", label: "Claude", baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest", keyHint: "sk-ant-… from console.anthropic.com" },
-  { id: "gemini", glyph: "⬢", label: "Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-1.5-flash", keyHint: "AIza… from aistudio.google.com" },
-  { id: "openrouter", glyph: "⬣", label: "All-in-one", baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini", keyHint: "sk-or-… from openrouter.ai — one key, every model" },
+  { id: "openai", glyph: "◈", label: "ChatGPT", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  { id: "anthropic", glyph: "✶", label: "Claude", baseURL: "https://api.anthropic.com", model: "claude-3-5-haiku-latest" },
+  { id: "gemini", glyph: "⬢", label: "Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", model: "gemini-1.5-flash" },
+  { id: "openrouter", glyph: "⬣", label: "All-in-one", baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" },
 ];
-
 export const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
   if (v === undefined) return localStorage.getItem(k) || "";
@@ -37,39 +22,15 @@ export const ls = (k: string, v?: string) => {
   else localStorage.setItem(k, v);
   return v;
 };
-
 export function Mark() {
-  return (
-    <span className="mark" aria-hidden="true">
-      <i />
-      <i />
-      <i />
-    </span>
-  );
+  return (<span className="mark" aria-hidden="true"><i /><i /><i /></span>);
 }
-
 export function Marble({ className }: { className: string }) {
-  return <span className={`marble ${className}`} aria-hidden="true" />;
+  return <span className={"marble " + className} aria-hidden="true" />;
 }
-
-// Memoized so typing in the composer doesn't remount/reload previews.
-// sandbox="allow-scripts" (WITHOUT allow-same-origin) isolates model-generated
-// HTML from our origin: it can't touch localStorage, cookies or the parent.
 export const HtmlFrame = memo(function HtmlFrame({ html, height, title, framed }: { html: string; height: number; title: string; framed?: boolean }) {
-  return (
-    <iframe
-      title={title}
-      srcDoc={html}
-      sandbox="allow-scripts"
-      style={
-        framed
-          ? { width: "100%", height, border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, marginTop: 12, background: "#fff" }
-          : { width: "100%", height, border: 0, background: "#fff", borderRadius: 4, marginTop: 8 }
-      }
-    />
-  );
+  return (<iframe title={title} srcDoc={html} sandbox="allow-scripts" style={framed ? { width: "100%", height, border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, marginTop: 12, background: "#fff" } : { width: "100%", height, border: 0, background: "#fff", borderRadius: 4, marginTop: 8 }} />);
 });
-
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
   const paths: Record<string, string> = {
     plus: "M12 5v14M5 12h14",
@@ -89,20 +50,73 @@ export function Icon({ name, size = 16 }: { name: string; size?: number }) {
     chevron: "m7 10 5 5 5-5",
     close: "M6 6l12 12M18 6 6 18",
   };
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
-      <path d={paths[name] || "M12 12h.01"} />
-    </svg>
-  );
+  return (<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] || "M12 12h.01"} /></svg>);
 }
-
-export const menuField = {
-  width: "100%",
-  background: "rgba(0,0,0,.4)",
-  border: "1px solid rgba(255,255,255,.12)",
-  borderRadius: 6,
-  padding: "8px",
-  color: "#eee",
-  fontSize: 11,
-  outline: "none",
-} as const;
+export const menuField = { width: "100%", background: "rgba(0,0,0,.4)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 6, padding: "8px", color: "#eee", fontSize: 11, outline: "none" } as const;
+export function renderRich(text: string, onCopy: (code: string) => void) {
+  const out: ReactNode[] = [];
+  const fence = /```([a-zA-Z0-9#+.-]*)([^\n]*)\n([\s\S]*?)```/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  const pushText = (chunk: string) => {
+    const lines = chunk.split("\n");
+    let para: string[] = [];
+    let list: string[] = [];
+    const flushPara = () => {
+      if (para.length) {
+        out.push(<p key={"p" + k++}>{inline(para.join(" "))}</p>);
+        para = [];
+      }
+    };
+    const flushList = () => {
+      if (list.length) {
+        out.push(<ul key={"u" + k++}>{list.map((li, i) => <li key={i}>{inline(li)}</li>)}</ul>);
+        list = [];
+      }
+    };
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) {
+        flushPara();
+        flushList();
+        continue;
+      }
+      const h = t.match(/^#{1,3}\s+(.*)/);
+      if (h) {
+        flushPara();
+        flushList();
+        out.push(<h4 key={"h" + k++}>{inline(h[1])}</h4>);
+        continue;
+      }
+      const b = t.match(/^[-*]\s+(.*)/);
+      if (b) {
+        flushPara();
+        list.push(b[1]);
+        continue;
+      }
+      para.push(t);
+    }
+    flushPara();
+    flushList();
+  };
+  while ((m = fence.exec(text))) {
+    if (m.index > last) pushText(text.slice(last, m.index));
+    const lang = (m[1] || "txt").toLowerCase() || "txt";
+    const meta = (m[2] || "").trim().replace(/^[:\s]+/, "").split(/\s/)[0] || "";
+    const code = m[3].replace(/\n$/, "");
+    const label = meta && meta.includes(".") ? meta : lang;
+    out.push(<div className="ws-code" key={"c" + k++}><header><span>{label}</span><span className="sp" /><button onClick={() => { try { navigator.clipboard?.writeText(code); } catch {} onCopy(code); }}>Copy</button></header><pre>{code.slice(0, 12000)}</pre></div>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) pushText(text.slice(last));
+  return out;
+}
+function inline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**") && p.length > 4) return <strong key={i} style={{ fontWeight: 650 }}>{p.slice(2, -2)}</strong>;
+    if (p.startsWith("`") && p.endsWith("`") && p.length > 2) return <code key={i} className="inline">{p.slice(1, -1)}</code>;
+    return <span key={i}>{p}</span>;
+  });
+}
