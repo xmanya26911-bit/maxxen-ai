@@ -327,15 +327,10 @@ export const CHAT_SUGGESTIONS = [
   { icon: "plug", title: "Connect an API", prompt: "Connect an API — wire my app to a streaming OpenAI-compatible endpoint." },
 ] as const;
 
-/* Chat modes — mirrors the real MAXXEN /api/chat/stream MODES map. */
+/* Chat modes — exactly two: plain Chat, and the tool-using Agent. */
 export const CHAT_MODES = [
   { id: "chat", label: "Chat", hint: "Talk freely — concise, helpful." },
-  { id: "build", label: "Build", hint: "Single-file HTML artifact + live preview." },
-  { id: "code", label: "Code", hint: "Code-first answers with file paths." },
-  { id: "design", label: "Design", hint: "Product-designer output + notes." },
-  { id: "research", label: "Research", hint: "Bullets, trade-offs, recommendation." },
-  { id: "deploy", label: "Deploy", hint: "Ship to your own Vercel." },
-  { id: "agent", label: "Agent", hint: "Engineering collaborator loop." },
+  { id: "agent", label: "Agent", hint: "Uses your GitHub, Vercel and Composio tools." },
 ] as const;
 
 /* BYOK providers — mirrors PROVIDERS in the real app/chat/chrome.tsx. */

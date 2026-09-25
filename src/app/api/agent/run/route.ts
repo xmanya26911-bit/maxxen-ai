@@ -68,6 +68,17 @@ export async function POST(req: Request) {
           ...budgeted(sanitizeMessages(messages)),
         ];
         activity("Planning", "planning");
+        {
+          const live = new Set(runtime.tools.map((t) => t.kind));
+          const names: string[] = [];
+          if (live.has("project")) names.push("GitHub");
+          if (live.has("deploy")) names.push("Vercel");
+          if (live.has("composio")) names.push("Composio");
+          activity(
+            names.length ? `Integrations live: ${names.join(", ")}` : "No integrations configured — work will be chat-only",
+            "planning"
+          );
+        }
         for (let step = 0; step < steps; step++) {
           let out: any;
           try {
