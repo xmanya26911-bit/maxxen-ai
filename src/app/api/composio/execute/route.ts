@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/composio";
+import {
+  cleanComposioKey,
+  composioErrorDetail,
+  executeComposioTool,
+} from "@/lib/composio";
 
 // REAL Composio tool execution (previously this only listed accounts).
 // Body: { composioKey, tool, action?, params?, connectedAccountId? }
@@ -33,22 +37,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const payload: Record<string, unknown> = { arguments: args };
-    if (connectedAccountId) payload.connected_account_id = connectedAccountId;
-
-    const r = await fetch(`https://backend.composio.dev/api/v3/tools/execute/${encodeURIComponent(slug)}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", ...composioHeaders(composioKey) },
-      body: JSON.stringify(payload),
+    const out = await executeComposioTool(composioKey, slug, args, {
+      connectedAccountId,
+      userId: body?.userId,
+      email: body?.email,
     });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
+    if (!out.ok) {
       return NextResponse.json(
-        { error: `Composio refused the call (${composioErrorDetail(j, r.status)})` },
+        { error: `Composio refused the call (${composioErrorDetail(out.body, out.status)})` },
         { status: 502 }
       );
     }
-    return NextResponse.json({ ok: true, tool: slug, result: (j as any)?.data ?? j });
+    const jb = out.body as { data?: unknown };
+    return NextResponse.json({ ok: true, tool: slug, result: jb?.data ?? out.body });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? "Composio execute failed" }, { status: 500 });
   }

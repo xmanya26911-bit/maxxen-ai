@@ -563,6 +563,7 @@ export default function ChatShell() {
             githubToken: store().getItem("maxxen_github_token") || undefined,
             vercelToken: store().getItem("maxxen_vercel_token") || undefined,
             composioKey: store().getItem("maxxen_composio_key") || undefined,
+            userEmail: useAuthStore.getState().session?.email || undefined,
             memory: readMemoryCacheSafe(convId),
           }),
           signal: controller.signal,

@@ -46,7 +46,8 @@ export async function POST(req: Request) {
   // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
   // authorizes world-changing tools. Model-supplied confirm is stripped below.
   const userConfirmed = Array.isArray(messages) && messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.startsWith("Confirmed:"));
-  const ctx: Ctx = { githubToken, vercelToken, composioKey, userConfirmed };
+  const email = typeof body?.userEmail === "string" ? body.userEmail.toLowerCase().trim() : undefined;
+  const ctx: Ctx = { githubToken, vercelToken, composioKey, userConfirmed, email };
 
   // Maxxen runtime: capabilities probed live, tool registry filtered to what
   // is actually usable, one stable identity for every model.

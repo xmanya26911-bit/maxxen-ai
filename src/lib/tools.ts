@@ -548,8 +548,8 @@ export const registry: ToolDef[] = [
     id: "composio_execute",
     kind: "composio",
     permission: "external",
-    description: "Run a Composio tool on the USER's connected account (e.g. send an email, create a page). Destructive-looking calls need confirm:true.",
-    parameters: { tool: "tool slug like GMAIL_SEND_EMAIL", params: "object of arguments", connectedAccountId: "optional", confirm: "required true for send/delete/remove/create" },
+    description: "Run a Composio tool on the USER's connected account (e.g. send an email, create a page). Destructive-looking calls need confirm:true. The runtime attaches the caller's user identity automatically when Composio can't resolve the account.",
+    parameters: { tool: "tool slug like GMAIL_SEND_EMAIL", params: "object of arguments", connectedAccountId: "optional", userId: "optional override for account resolution", confirm: "required true for send/delete/remove/create" },
     run: async (args, ctx) => {
       const key = needComposio(ctx.composioKey);
       const slug = need(args.tool, "tool slug");
@@ -561,19 +561,15 @@ export const registry: ToolDef[] = [
       // Human-gated: ignore model-supplied args.confirm, require ctx.userConfirmed.
       if (destructive && ctx.userConfirmed !== true)
         return { ok: false, summary: `“${slug}” changes the outside world — confirm explicitly first.`, needsConfirm: true };
-      const payload: Record<string, unknown> = { arguments: params };
-      if (typeof args.connectedAccountId === "string" && args.connectedAccountId) payload.connected_account_id = args.connectedAccountId;
-      const r = await fetch(`https://backend.composio.dev/api/v3/tools/execute/${encodeURIComponent(slug)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": key },
-        body: JSON.stringify(payload),
+      const { executeComposioTool, composioErrorDetail } = await import("./composio");
+      const out = await executeComposioTool(key, slug, params, {
+        connectedAccountId: typeof args.connectedAccountId === "string" ? args.connectedAccountId : undefined,
+        userId: typeof args.userId === "string" ? args.userId : undefined,
+        email: ctx.email,
       });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        const { composioErrorDetail } = await import("./composio");
-        return { ok: false, summary: `Composio refused the call (${composioErrorDetail(j, r.status)})` };
-      }
-      return { ok: true, summary: `“${slug}” executed.`, data: (j as any)?.data ?? j };
+      if (!out.ok) return { ok: false, summary: `Composio refused the call (${composioErrorDetail(out.body, out.status)})` };
+      const jb = out.body as { data?: unknown };
+      return { ok: true, summary: `“${slug}” executed.`, data: jb?.data ?? out.body };
     },
   },
 ];
@@ -678,6 +674,7 @@ const SCHEMAS: Record<string, unknown> = {
       tool: { type: "string", description: "Composio tool slug, e.g. GMAIL_SEND_EMAIL" },
       params: { type: "object", description: "Tool arguments" },
       connectedAccountId: { type: "string" },
+      userId: { type: "string", description: "Override for account resolution (runtime attaches your identity automatically)" },
       confirm: { type: "boolean", description: "Required true for world-changing calls" },
     },
     required: ["tool", "params"],
