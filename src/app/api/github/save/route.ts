@@ -33,6 +33,12 @@ export async function POST(req: Request) {
     }
     const body = typeof content === "string" ? content : JSON.stringify(content ?? {}, null, 2);
     if (body.length > 1000000) return NextResponse.json({ error: "Content too large (1MB max)." }, { status: 413 });
+    // Credential-leak guard: refuse generated code carrying secrets.
+    const { scanForSecrets, secretRefusal } = await import("@/lib/secret-scan");
+    const leaks = scanForSecrets(body);
+    if (leaks.length && safePath !== "settings.json") {
+      return NextResponse.json({ error: secretRefusal(leaks, safePath) }, { status: 422 });
+    }
 
     const oct = new Octokit({ auth: githubToken });
     const { data: me } = await oct.rest.users.getAuthenticated();

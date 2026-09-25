@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
+import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
 
 // Streaming twin of /api/chat: Server-Sent Events, one JSON payload per line:
 //   data: {"delta":"..."} … data: {"done":true,"mode":"build"} | data: {"error":"..."}
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
   if (!clean.length) return NextResponse.json({ error: "No valid messages to send." }, { status: 400 });
 
   const modeKey = typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
-  const system = `You are Maxxen AI, a multipurpose agentic builder inside the Maxxen workspace.\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`;
+  const system = `${MAXXEN_IDENTITY}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`;
   const sized = budgeted(clean);
   let url: string;
   try {

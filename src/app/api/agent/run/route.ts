@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
-import { registry, toOpenAITools, type Ctx } from "@/lib/tools";
+import { toOpenAITools, type Ctx } from "@/lib/tools";
+import { buildRuntime } from "@/lib/maxxen-runtime";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // SSE events (one JSON per line):
@@ -14,11 +15,9 @@ import { registry, toOpenAITools, type Ctx } from "@/lib/tools";
 // parity here — it gets a clear error, not a silent failure). Bounded loop
 // (default 6 tool steps). Every tool runs as the CALLER with THEIR keys.
 // Private chain-of-thought is never exposed — only concise activity lines.
+// Identity, capabilities, and tools come from the Maxxen runtime (one stable
+// identity for every model — the LLM is replaceable, Maxxen is not).
 const MAX_STEPS = 6;
-const AGENT_SYSTEM = `You are Maxxen, an engineering agent inside the user's own workspace. Think step by step, then ACT with tools — never claim an action you didn't take.
-Available tools do real things (user's GitHub, Vercel, Composio). Prefer inspecting (project_list/project_read, vercel_deploy_status) before changing anything. Batch independent reads in one block.
-For builds: create complete single-file HTML under builds/<chatId>/ via project_write, then report. For deploys: vercel_deploy REQUIRES the user to confirm first — if confirm is missing, explain what you WOULD deploy and stop.
-Keep activity narration to short imperative lines. Final answer: what changed, file paths, how to verify.`;
 
 export async function POST(req: Request) {
   let body: any = {};
@@ -48,6 +47,11 @@ export async function POST(req: Request) {
   const userConfirmed = Array.isArray(messages) && messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.startsWith("Confirmed:"));
   const ctx: Ctx = { githubToken, vercelToken, composioKey, userConfirmed };
 
+  // Maxxen runtime: capabilities probed live, tool registry filtered to what
+  // is actually usable, one stable identity for every model.
+  const runtime = await buildRuntime(ctx, { providerLabel: typeof provider === "string" && provider ? provider : "custom" });
+  const openaiTools = toOpenAITools(runtime.tools) as any;
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`));
@@ -60,7 +64,7 @@ export async function POST(req: Request) {
       try {
         const client = new OpenAI({ apiKey, baseURL: url });
         const history: any[] = [
-          { role: "system", content: AGENT_SYSTEM },
+          { role: "system", content: runtime.systemPrompt },
           ...budgeted(sanitizeMessages(messages)),
         ];
         activity("Planning", "planning");
@@ -71,7 +75,7 @@ export async function POST(req: Request) {
               model: mid,
               messages: history,
               temperature: 0.3,
-              tools: toOpenAITools() as any,
+              tools: openaiTools,
               tool_choice: "auto" as any,
             });
           } catch (e: any) {
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
           }
           history.push({ role: "assistant", content: text || null, tool_calls: calls });
           for (const call of calls) {
-            const def = registry.find((t) => t.id === call.function?.name);
+            const def = runtime.tools.find((t) => t.id === call.function?.name);
             let args: Record<string, unknown> = {};
             try {
               args = JSON.parse(call.function?.arguments || "{}");

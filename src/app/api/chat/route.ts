@@ -33,8 +33,9 @@ const MODES: Record<string, string> = {
     "Work like an engineering collaborator: break the task into numbered file operations (inspect/create/update), narrate each step as you go, and finish with a summary of what changed and what to verify. You cannot run commands yourself — be explicit about that and give exact commands for the user.",
 };
 
-const BASE_SYSTEM =
-  "You are MAXXEN, a multipurpose agentic AI that designs, builds and deploys websites, apps and dashboards with the user.";
+// Shared Maxxen identity — one stable agent across every model provider.
+import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
+const BASE_SYSTEM = MAXXEN_IDENTITY;
 
 function hintFor(e: unknown, status?: number): string {
   const raw = String((e as Error)?.message ?? e ?? "");

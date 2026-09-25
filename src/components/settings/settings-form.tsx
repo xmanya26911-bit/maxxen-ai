@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, Loader2, LogOut, TriangleAlert } from "lucide-react";
@@ -43,6 +43,47 @@ const BTN_GHOST =
 const BTN_DANGER =
   "mx-focus mx-press inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/25 bg-red-400/[0.06] px-4 text-sm font-medium text-red-200 transition-colors hover:bg-red-400/[0.12] disabled:opacity-40";
 
+/** One connection-state row: ● Connected / ○ Not connected + actions. */
+function IntegrationStatus({
+  name,
+  connected,
+  live,
+  onRemove,
+  action,
+}: {
+  name: string;
+  connected: boolean;
+  /** True when liveness was verified against the real service (not just a saved key). */
+  live?: boolean;
+  onRemove?: () => void;
+  action?: ReactNode;
+}) {
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2">
+      <span
+        aria-hidden="true"
+        className={connected ? "h-1.5 w-1.5 rounded-full bg-emerald-300" : "h-1.5 w-1.5 rounded-full bg-white/20"}
+      />
+      <span className="text-[12.5px] font-medium text-white/85">{name}</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-white/40">
+        {connected ? (live ? "Connected · verified" : "Connected") : "Not connected"}
+      </span>
+      <span className="ml-auto flex items-center gap-3">
+        {action}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="mx-focus font-mono text-[10px] uppercase tracking-[0.12em] text-white/40 transition-colors hover:text-red-200"
+          >
+            Remove
+          </button>
+        )}
+      </span>
+    </li>
+  );
+}
+
 export function SettingsForm() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
@@ -60,6 +101,8 @@ export function SettingsForm() {
   const [statusKind, setStatusKind] = useState<"ok" | "err" | "info">("info");
   const [saving, setSaving] = useState(false);
   const [wiping, setWiping] = useState(false);
+  const [testingComposio, setTestingComposio] = useState(false);
+  const [composioState, setComposioState] = useState<"unknown" | "connected" | "failed">("unknown");
 
   const flash = (message: string, kind: "ok" | "err" | "info" = "info") => {
     setStatus(message);
@@ -134,6 +177,50 @@ export function SettingsForm() {
     const v = await pushVault(token);
     flash(v.message, v.ok ? "ok" : "err");
     setSaving(false);
+  };
+
+  const testComposio = async () => {
+    const key = composioKey.trim();
+    if (!key || testingComposio) return;
+    setTestingComposio(true);
+    try {
+      const r = await fetch("/api/composio/connect", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ composioKey: key }),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.ok) {
+        setComposioState("connected");
+        flash("Composio connected — key works on YOUR account.", "ok");
+      } else {
+        setComposioState("failed");
+        flash((j && j.error) || "Composio rejected the key.", "err");
+      }
+    } catch (e) {
+      setComposioState("failed");
+      flash(e instanceof Error ? e.message : "Composio check failed.", "err");
+    } finally {
+      setTestingComposio(false);
+    }
+  };
+
+  const disconnect = (which: "github" | "vercel" | "composio" | "endpoint") => {
+    if (which === "github") {
+      setGithubToken("");
+      ls("maxxen_github_token", "");
+    } else if (which === "vercel") {
+      setVercelToken("");
+      ls("maxxen_vercel_token", "");
+    } else if (which === "composio") {
+      setComposioKey("");
+      ls("maxxen_composio_key", "");
+      setComposioState("unknown");
+    } else {
+      setApiKey("");
+      ls("maxxen_apikey", "");
+    }
+    flash("Removed locally — press Save everything to sync the removal.", "info");
   };
 
   const wipeAll = async () => {
@@ -212,7 +299,32 @@ export function SettingsForm() {
         )}
 
         <section aria-labelledby="endpoint-h" className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
-          <h2 id="endpoint-h" className="text-[15px] font-semibold">AI endpoint</h2>
+          <div className="flex items-center gap-2">
+            <h2 id="endpoint-h" className="text-[15px] font-semibold">AI endpoint</h2>
+            <span
+              role="status"
+              className="ml-auto inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/50"
+            >
+              <span
+                aria-hidden="true"
+                className={
+                  baseURL.trim() && apiKey.trim() && model.trim()
+                    ? "h-1.5 w-1.5 rounded-full bg-emerald-300"
+                    : "h-1.5 w-1.5 rounded-full bg-white/20"
+                }
+              />
+              {baseURL.trim() && apiKey.trim() && model.trim() ? "Configured" : "Not configured"}
+            </span>
+            {apiKey.trim() && (
+              <button
+                type="button"
+                onClick={() => disconnect("endpoint")}
+                className="mx-focus font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/40 transition-colors hover:text-red-200"
+              >
+                Remove
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-[12.5px] text-muted-foreground">
             Tap a provider, paste the one key, done. Used for every chat generation.
           </p>
@@ -255,6 +367,34 @@ export function SettingsForm() {
           <p className="mt-1 text-[12.5px] text-muted-foreground">
             Your tokens — GitHub storage, Vercel deploys, Composio plugins.
           </p>
+          <ul aria-label="Integration connection states" className="mt-3 grid gap-1.5">
+            <IntegrationStatus
+              name="GitHub"
+              connected={githubToken.trim().length > 0}
+              onRemove={githubToken.trim() ? () => disconnect("github") : undefined}
+            />
+            <IntegrationStatus
+              name="Vercel"
+              connected={vercelToken.trim().length > 0}
+              onRemove={vercelToken.trim() ? () => disconnect("vercel") : undefined}
+            />
+            <IntegrationStatus
+              name="Composio"
+              connected={composioState === "connected" || (composioState === "unknown" && composioKey.trim().length > 0)}
+              live={composioState === "connected"}
+              onRemove={composioKey.trim() ? () => disconnect("composio") : undefined}
+              action={
+                <button
+                  type="button"
+                  onClick={testComposio}
+                  disabled={testingComposio || !composioKey.trim()}
+                  className="mx-focus font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white disabled:opacity-40"
+                >
+                  {testingComposio ? "Testing…" : "Test"}
+                </button>
+              }
+            />
+          </ul>
           <div className="mt-4 grid gap-3">
             <div>
               <label htmlFor="set-gh" className={LABEL}>GitHub token (repo scope)</label>
@@ -272,7 +412,7 @@ export function SettingsForm() {
             </div>
             <div>
               <label htmlFor="set-composio" className={LABEL}>Composio key</label>
-              <input id="set-composio" className={FIELD} value={composioKey} onChange={(e) => setComposioKey(e.target.value)} placeholder="YOUR key" type="password" autoComplete="off" />
+              <input id="set-composio" className={FIELD} value={composioKey} onChange={(e) => { setComposioKey(e.target.value); setComposioState("unknown"); }} placeholder="YOUR key" type="password" autoComplete="off" />
             </div>
           </div>
         </section>
