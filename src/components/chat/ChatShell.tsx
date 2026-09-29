@@ -276,15 +276,22 @@ export default function ChatShell() {
     [activeConversation]
   );
 
-  // Project files for THIS conversation: every artifact ever produced in the
-  // thread, not just the newest reply's blocks. A follow-up question with no
-  // code in it used to empty (and unmount) the whole workspace pane — taking
-  // the Memory tab and the Save/Deploy buttons with it. The index is derived
-  // from the thread, so the pane tracks the project rather than the last
-  // message, and `versions` still holds every generation for diff/revert.
-  const { files: blocks, versions: threadVersions } = useMemo(() => {
+  // Latest successful assistant turn — the artifact source.
+  const lastAssistant = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "assistant" && !m.failed) ?? null,
+    [messages]
+  );
+  const lastAssistantContent = lastAssistant?.content ?? "";
+  const blocks = useMemo(
+    () => (lastAssistantContent ? extractBlocks(lastAssistantContent) : EMPTY_BLOCKS),
+    [lastAssistantContent]
+  );
+
+  // Every version of every file across the thread (oldest first) — powers
+  // the version history + diff + revert controls in the workspace pane.
+  const threadVersions = useMemo(() => {
     const counters = new Map<string, number>();
-    const versions: { key: string; path?: string; lang: string; code: string; label: string }[] = [];
+    const out: { key: string; path?: string; lang: string; code: string; label: string }[] = [];
     for (const m of messages) {
       if (m.role !== "assistant" || m.failed) continue;
       const list = m.blocks && m.blocks.length ? m.blocks : extractBlocks(m.content);
@@ -292,20 +299,11 @@ export default function ChatShell() {
         const key = b.path || `${b.lang}:snippet`;
         const n = (counters.get(key) ?? 0) + 1;
         counters.set(key, n);
-        versions.push({ key, path: b.path, lang: b.lang, code: b.code, label: `v${n}` });
+        out.push({ key, path: b.path, lang: b.lang, code: b.code, label: `v${n}` });
       }
     }
-    // Newest version of every file, most recently updated first.
-    const latest = new Map<string, CodeBlock>();
-    for (const v of versions) {
-      latest.delete(v.key);
-      latest.set(v.key, { lang: v.lang, code: v.code, path: v.path });
-    }
-    return { files: [...latest.values()].reverse(), versions };
+    return out;
   }, [messages]);
-
-  /** The pane opens for any started conversation (files OR just a thread). */
-  const paneAvailable = blocks.length > 0 || messages.length > 0;
 
   // Auth gate: no session → /login; stale token → sign out + /login.
   useEffect(() => {
@@ -366,8 +364,8 @@ export default function ChatShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen, paneOpen]);
 
-  // The artifact overlay only exists while the conversation does.
-  if (paneOpen && !paneAvailable) {
+  // The artifact overlay only exists while blocks do (render-phase adjustment).
+  if (paneOpen && blocks.length === 0) {
     setPaneOpen(false);
   }
 
@@ -864,7 +862,7 @@ export default function ChatShell() {
                 {messages.length} {messages.length === 1 ? "message" : "messages"}
               </span>
             )}
-            {paneAvailable && (
+            {blocks.length > 0 && (
               <button
                 type="button"
                 onClick={() => setPaneOpen(true)}

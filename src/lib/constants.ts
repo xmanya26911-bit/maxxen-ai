@@ -1,5 +1,4 @@
 import { LayoutGrid, FolderKanban, Bot, Blocks, Plug, Settings, Sparkles, FileCode2, Check, Loader2, Circle } from "lucide-react";
-import type { ModeId } from "./modes";
 
 /* ------------------------------------------------------------------ */
 /* Navigation                                                          */
@@ -328,14 +327,11 @@ export const CHAT_SUGGESTIONS = [
   { icon: "plug", title: "Connect an API", prompt: "Connect an API — wire my app to a streaming OpenAI-compatible endpoint." },
 ] as const;
 
-/* Chat modes — one definition, shared with the server prompt builders.
-   See src/lib/modes.ts: a mode only changes the instruction block, and every
-   id here must exist there (the ModeId annotation enforces that). */
-export const CHAT_MODES: readonly { id: ModeId; label: string; hint: string }[] = [
-  { id: "chat", label: "Chat", hint: "Talk freely — files come back as complete fenced blocks." },
-  { id: "build", label: "Build", hint: "One complete single-file HTML page, ready to preview and deploy." },
-  { id: "agent", label: "Agent", hint: "Acts on your project with your GitHub, Vercel and Composio tools." },
-];
+/* Chat modes — exactly two: plain Chat, and the tool-using Agent. */
+export const CHAT_MODES = [
+  { id: "chat", label: "Chat", hint: "Talk freely — concise, helpful." },
+  { id: "agent", label: "Agent", hint: "Uses your GitHub, Vercel and Composio tools." },
+] as const;
 
 /* BYOK providers — mirrors PROVIDER_META in src/lib/endpoint.ts. */
 export const CHAT_PROVIDERS = [

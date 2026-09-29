@@ -2,25 +2,36 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
-import { modeBlock, normalizeMode } from "@/lib/modes";
 
 /**
- * MAXXEN Chat — BYOK streaming endpoint.
+ * MAXXEN Chat — BYOK streaming endpoint (replaces the vendor-key stub).
  *
  * POST /api/chat
  * Body: { messages, mode?, apiKey, baseURL?, model?, provider? }
  * Response: 200 text/plain — raw text chunks (deltas), no framing.
  * Errors: non-200 JSON { error }.
  *
- * Mode instructions come from src/lib/modes.ts so the chips the user sees and
- * the prompt the server builds can never drift apart again.
- *
- * Keys are per-request BYOK (never stored server-side, but they DO transit this
- * server on their way to the provider — see Settings for the honest model).
+ * Keys are per-request BYOK (never stored server-side). Modes mirror the
+ * workspace MODES map; the selected mode changes the system instruction.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const MODES: Record<string, string> = {
+  chat: "Chat freely and helpfully. Be concise.",
+  build:
+    "Build a complete, SINGLE-FILE HTML page. Output exactly one ```html block containing the entire page (inline CSS+JS, no external build step). Before it, give a 2-line plan. After it, 2 lines on how to open/deploy it. Do not output multiple files.",
+  code: "Answer with code first. Output fenced code blocks, each labeled with language and path like ```tsx:components/Button.tsx. Keep prose minimal — short plan, then code, then how to run.",
+  design:
+    "Act as a product designer + frontend engineer. Prioritize typography, spacing, hierarchy and restraint. Output a single ```html block with the design implemented, plus 3 bullet notes on the design decisions.",
+  research:
+    "Research carefully and show your work: key findings as bullets, trade-offs, and a recommendation. Cite what you checked. Never invent sources, versions or APIs — say when unsure.",
+  deploy:
+    "Guide shipping: explain the exact deploy steps for the user's own Vercel project (import repo, env vars, deploy), plus a pre-deploy checklist (build passes, env set, domains). If they paste an error, diagnose it precisely.",
+  agent:
+    "Work like an engineering collaborator: break the task into numbered file operations (inspect/create/update), narrate each step as you go, and finish with a summary of what changed and what to verify. You cannot run commands yourself — be explicit about that and give exact commands for the user.",
+};
 
 // Shared Maxxen identity — one stable agent across every model provider.
 import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
@@ -70,8 +81,9 @@ export async function POST(req: Request) {
   }));
   if (!clean.length) return NextResponse.json({ error: "No messages to send." }, { status: 400 });
 
-  const modeKey = normalizeMode(mode);
-  const system = `${BASE_SYSTEM}\n\n${modeBlock(modeKey)}`;
+  const modeKey =
+    typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
+  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`;
   const sized = budgeted(clean);
 
   let url: string;

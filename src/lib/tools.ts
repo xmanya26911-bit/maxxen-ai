@@ -1,4 +1,5 @@
 import { Octokit } from "octokit";
+import { assertSafeBaseURL } from "./net-guard";
 
 // MAXXEN tool registry — every entry has a REAL implementation below.
 // Kinds: project (user's GitHub), deploy (user's Vercel), composio (user's key).
@@ -50,6 +51,8 @@ async function githubFile(owner: string, repo: string, oct: Octokit, path: strin
     throw e;
   }
 }
+
+export const WRITE_PREFIX = /^(builds|chats)\//;
 
 export const registry: ToolDef[] = [
   {
@@ -104,11 +107,9 @@ export const registry: ToolDef[] = [
     parameters: { path: "string under builds/ or chats/", content: "string (1MB max)", message: "optional commit message" },
     run: async (args, ctx) => {
       const token = needGithub(ctx.githubToken);
-      const rawPath = typeof args.path === "string" ? args.path : "";
-      // Same guard as every other repo route — one allowlist, no drift.
-      const { cleanGithubPath } = await import("./github-guard");
-      const p = cleanGithubPath(rawPath, { prefixes: ["builds/", "chats/"] });
-      if (!p) return { ok: false, summary: "Writes limited to files under builds/ and chats/." };
+      const rawPath = need(args.path, "path");
+      const p = rawPath.replace(/\\/g, "/").replace(/^\/+/, "");
+      if (!WRITE_PREFIX.test(p) || p.includes("..")) return { ok: false, summary: "Writes limited to builds/ and chats/." };
       const content = typeof args.content === "string" ? args.content : "";
       if (!content) return { ok: false, summary: "Empty content — nothing written." };
       if (content.length > 1000000) return { ok: false, summary: "Content too large (1MB max)." };
@@ -297,16 +298,25 @@ export const registry: ToolDef[] = [
     run: async (args, ctx) => {
       const raw = typeof args.url === "string" ? args.url.trim() : "";
       if (!raw) return { ok: false, summary: "Provide a URL to check." };
-      const { safeFetchFollow, readCapped } = await import("./net-guard");
+      let safe: string;
       try {
-        // Redirects are followed manually and every hop is re-validated, so a
-        // public URL cannot bounce this fetch onto an internal address.
-        const { response: r, url: finalUrl, hops } = await safeFetchFollow(raw, {
-          maxHops: 3,
-          timeoutMs: 25000,
+        const { assertSafeBaseURL } = await import("./net-guard");
+        const u = new URL(raw);
+        if (u.protocol !== "https:") return { ok: false, summary: "Only https URLs can be checked." };
+        assertSafeBaseURL(raw, "");
+        safe = u.toString();
+      } catch (e: any) {
+        return { ok: false, summary: `Unsafe or invalid URL: ${e?.message || e}` };
+      }
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 25000);
+      try {
+        const r = await fetch(safe, {
+          signal: ctrl.signal,
           headers: { "user-agent": "Maxxen-verify/1.0" },
+          redirect: "follow",
         });
-        const text = await readCapped(r, 400_000);
+        const text = await r.text().catch(() => "");
         const title = /<title[^>]*>([^<]{1,140})/i.exec(text)?.[1]?.trim() || "(no title)";
         const links = new Set<string>();
         const linkRe = /<(a|link)[^>]+href=["']([^"'#]+)["']/gi;
@@ -316,23 +326,21 @@ export const registry: ToolDef[] = [
         }
         const scripts = (text.match(/<script\b/gi) || []).length;
         const images = (text.match(/<img\b/gi) || []).length;
-        const hopNote = hops ? ` after ${hops} redirect${hops === 1 ? "" : "s"}` : "";
         const ok = r.ok;
         return {
           ok,
           summary: ok
-            ? `LIVE ✓ ${r.status} — "${title}" (${(text.length / 1024).toFixed(1)}KB, ${links.size} links, ${images} images, ${scripts} scripts${hopNote}).`
-            : `NOT LIVE ✗ HTTP ${r.status} at ${finalUrl} — diagnose before reporting success.`,
-          data: { url: finalUrl, status: r.status, title, links: [...links], images, scripts, bytes: text.length },
+            ? `LIVE ✓ ${r.status} — "${title}" (${(text.length / 1024).toFixed(1)}KB, ${links.size} links, ${images} images, ${scripts} scripts).`
+            : `NOT LIVE ✗ HTTP ${r.status} at ${safe} — diagnose before reporting success.`,
+          data: { url: safe, status: r.status, title, links: [...links], images, scripts, bytes: text.length },
         };
       } catch (e: any) {
-        // Covers unsafe/invalid URLs, DNS rejection, redirect abuse and timeouts.
         return {
           ok: false,
-          summary: `Could not verify the URL: ${
-            e?.name === "AbortError" ? "timed out after 25s" : String(e?.message || e).slice(0, 200)
-          }`,
+          summary: `Unreachable: ${e?.name === "AbortError" ? "timed out after 25s" : String(e?.message || e).slice(0, 200)}`,
         };
+      } finally {
+        clearTimeout(t);
       }
     },
   },
@@ -568,6 +576,10 @@ export const registry: ToolDef[] = [
   },
 ];
 
+export function describeForModel(): { name: string; description: string; parameters: Record<string, unknown> }[] {
+  return registry.map((t) => ({ name: t.id, description: t.description, parameters: t.parameters }));
+}
+
 const SCHEMAS: Record<string, unknown> = {
   project_list: { type: "object", properties: { path: { type: "string", description: "Directory, default ''" } } },
   project_read: {
@@ -686,3 +698,5 @@ export function toOpenAITools(defs: ToolDef[] = registry) {
     },
   }));
 }
+
+export { assertSafeBaseURL };

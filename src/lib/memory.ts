@@ -4,8 +4,7 @@
  * Each conversation is a project. Its memory (framework, design language,
  * rules) persists in the user's own maxxen-data repo under memory/<id>.json
  * so it survives sessions, plus a localStorage mirror for instant reads.
- * The browser owns the mirror key; the agent loop receives the object in the
- * run request body and injects it into the model context on every run.
+ * The agent loop injects it into the model context on every run.
  */
 
 export interface ProjectMemory {
@@ -27,9 +26,8 @@ export const EMPTY_MEMORY: ProjectMemory = {
   rules: [],
 };
 
-// The agent's memory is delivered to the server as a plain object in the run
-// request body (see ChatShell.runAgent) — this module owns the shape and the
-// rendering, never the browser storage key.
+const KEY = (projectId: string) => `maxxen_memory_${projectId}`;
+export const memoryPath = (projectId: string) => `memory/${projectId}.json`;
 
 /** Sanitize + bound untrusted memory payloads (client or repo). */
 export function sanitizeMemory(input: unknown): ProjectMemory {
@@ -48,6 +46,25 @@ export function sanitizeMemory(input: unknown): ProjectMemory {
     }
   }
   return out;
+}
+
+/** Local mirror read (synchronous, for the agent request path). */
+export function readMemoryCache(projectId: string): ProjectMemory | null {
+  try {
+    const raw = window.localStorage.getItem(KEY(projectId));
+    if (!raw) return null;
+    return sanitizeMemory(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function writeMemoryCache(projectId: string, memory: ProjectMemory): void {
+  try {
+    window.localStorage.setItem(KEY(projectId), JSON.stringify({ ...memory, updatedAt: new Date().toISOString() }));
+  } catch {
+    /* quota/privacy — server copy remains source of truth */
+  }
 }
 
 /** Render the memory block appended to the agent system context. */
