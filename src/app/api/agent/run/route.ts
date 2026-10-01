@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
 import { toOpenAITools, type Ctx } from "@/lib/tools";
 import { buildRuntime } from "@/lib/maxxen-runtime";
+import { createOpenAICompatClient } from "@/lib/ai/providers/openai";
+import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
+import type { AgentPhase, MaxxenEvent } from "@/lib/streaming/types";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
-// SSE events (one JSON per line):
-//   activity {"phase":"planning|tool|done|error", "text":"…", "tool"?:id}
-//   delta {"delta":"…"}            streaming final-answer text
-//   toolStart/toolDelta/toolDone   token-by-token tool result streaming
-//   done {"done":true} | {"error":"…"}
+// Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
+//   run.start, agent.activity, tool.start/tool.delta/tool.result,
+//   permission.request, message.delta, error, run.complete.
 // Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps? }
 // Rules: OpenAI-compatible endpoints only (Anthropic has no function-calling
 // parity here — it gets a clear error, not a silent failure). Bounded loop
@@ -26,6 +27,10 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+  // Session seam (Phase 0) — observe-only; see lib/security/guard.
+  if (SESSION_ENFORCED && !hasValidSession(req, body)) {
+    return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
   const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
@@ -58,15 +63,18 @@ export async function POST(req: Request) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj: unknown) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`));
-      const activity = (text: string, phase = "tool", tool?: string) => send({ activity: { phase, text, tool } });
+      const encoder = new TextEncoder();
+      const send = (event: MaxxenEvent) => controller.enqueue(encoder.encode(encodeEvent(event)));
+      const activity = (text: string, phase: AgentPhase = "tool", tool?: string) =>
+        send({ type: "agent.activity", phase, text, tool });
       const fail = (message: string) => {
-        send({ activity: { phase: "error", text: message } });
-        send({ error: message });
+        send({ type: "agent.activity", phase: "error", text: message });
+        send({ type: "error", message });
         controller.close();
       };
+      send({ type: "run.start", mode: "agent", model: mid });
       try {
-        const client = new OpenAI({ apiKey, baseURL: url });
+        const client = createOpenAICompatClient(apiKey, url);
         const { memoryBlock, sanitizeMemory } = await import("@/lib/memory");
         const memBlock = memoryBlock(memory ? sanitizeMemory(memory) : null);
         const history: any[] = [
@@ -107,8 +115,8 @@ export async function POST(req: Request) {
               fail("Model returned nothing. Retry, or switch models.");
               return;
             }
-            for (const ch of text) send({ delta: ch });
-            send({ done: true });
+            for (const ch of text) send({ type: "message.delta", text: ch });
+            send({ type: "run.complete", mode: "agent" });
             controller.close();
             return;
           }
@@ -131,7 +139,7 @@ export async function POST(req: Request) {
               continue;
             }
             activity(`${def.id}`, "tool", def.id);
-            send({ toolStart: { id: call.id, tool: def.id } });
+            send({ type: "tool.start", callId: call.id, tool: def.id });
             let res;
             try {
               res = await def.run(args, ctx);
@@ -152,7 +160,7 @@ export async function POST(req: Request) {
             let piece = "";
             const flushPiece = () => {
               if (piece) {
-                send({ toolDelta: { id: call.id, tool: def.id, chunk: piece } });
+                send({ type: "tool.delta", callId: call.id, tool: def.id, chunk: piece });
                 piece = "";
               }
             };
@@ -161,19 +169,21 @@ export async function POST(req: Request) {
               if (piece.length >= 24) flushPiece();
             }
             flushPiece();
-            send({ toolDone: { id: call.id, tool: def.id, ok: res.ok } });
+            // Terminal event for this call: signals completion (the client's
+            // typewriter finishes draining) and carries the structured result.
+            let resultData: unknown;
             if (res.ok && res.data !== undefined && res.data !== null) {
               try {
-                const snapshot = JSON.parse(JSON.stringify(res.data));
-                send({ toolResult: { id: call.id, tool: def.id, data: snapshot } });
+                resultData = JSON.parse(JSON.stringify(res.data));
               } catch {
                 /* non-serializable — summary text already streamed */
               }
             }
+            send({ type: "tool.result", callId: call.id, tool: def.id, ok: res.ok, data: resultData });
             const line = res.ok ? `✓ ${res.summary}` : `✗ ${res.summary}`;
             activity(line, res.ok ? "tool" : "error", def.id);
             if (!res.ok && (res as any).needsConfirm) {
-              send({ needsConfirm: true, summary: res.summary, tool: def.id });
+              send({ type: "permission.request", tool: def.id, summary: res.summary });
             }
             history.push({
               role: "tool",
@@ -197,11 +207,11 @@ export async function POST(req: Request) {
             temperature: 0.3,
           });
           const text = fin.choices[0]?.message?.content || "Stopped at the step budget with partial progress kept.";
-          for (const ch of text) send({ delta: ch });
+          for (const ch of text) send({ type: "message.delta", text: ch });
         } catch {
-          send({ delta: "Stopped at the step budget with partial progress kept." });
+          send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
         }
-        send({ done: true });
+        send({ type: "run.complete", mode: "agent" });
         controller.close();
       } catch (e: any) {
         fail(e?.message || "Agent failed.");
@@ -210,7 +220,5 @@ export async function POST(req: Request) {
     cancel() {},
   });
 
-  return new Response(stream, {
-    headers: { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" },
-  });
+  return new Response(stream, { headers: STREAM_HEADERS });
 }

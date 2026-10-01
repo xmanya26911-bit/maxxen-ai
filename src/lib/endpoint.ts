@@ -8,35 +8,25 @@
  * first Settings save).
  */
 
-export const PROVIDER_IDS = ["openai", "anthropic", "gemini", "custom"] as const;
-export type ProviderId = (typeof PROVIDER_IDS)[number];
+// Provider identity now has ONE source of truth: src/lib/ai/providers/registry.
+// These exports are kept for backward compatibility with existing imports.
+import {
+  PROVIDER_IDS as CANONICAL_PROVIDER_IDS,
+  displayLabel,
+  getProvider,
+} from "@/lib/ai/providers/registry";
+import type { ProviderId } from "@/lib/ai/types";
 
-export const PROVIDER_META: Record<ProviderId, { label: string; baseURL: string; model: string; keyHint: string }> = {
-  openai: {
-    label: "◈ ChatGPT",
-    baseURL: "https://api.openai.com/v1",
-    model: "gpt-4o-mini",
-    keyHint: "sk-… from platform.openai.com/api-keys",
-  },
-  anthropic: {
-    label: "✶ Claude",
-    baseURL: "https://api.anthropic.com",
-    model: "claude-3-5-haiku-latest",
-    keyHint: "sk-ant-… from console.anthropic.com",
-  },
-  gemini: {
-    label: "⬢ Gemini",
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-    model: "gemini-1.5-flash",
-    keyHint: "AIza… from aistudio.google.com",
-  },
-  custom: {
-    label: "Custom",
-    baseURL: "",
-    model: "",
-    keyHint: "as issued by your provider",
-  },
-};
+export type { ProviderId };
+export const PROVIDER_IDS = CANONICAL_PROVIDER_IDS;
+
+export const PROVIDER_META: Record<ProviderId, { label: string; baseURL: string; model: string; keyHint: string }> =
+  Object.fromEntries(
+    CANONICAL_PROVIDER_IDS.map((id) => {
+      const p = getProvider(id);
+      return [id, { label: displayLabel(id), baseURL: p.defaultBaseURL, model: p.defaultModel, keyHint: p.keyHint }] as const;
+    })
+  ) as Record<ProviderId, { label: string; baseURL: string; model: string; keyHint: string }>;
 
 export function normalizeProvider(raw: unknown): ProviderId {
   const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";

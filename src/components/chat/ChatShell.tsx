@@ -11,6 +11,8 @@ import Sidebar from "./Sidebar";
 import WorkspacePane from "./WorkspacePane";
 import { extractBlocks } from "./blocks";
 import { uid, useChatStore } from "./store";
+import { createEventParser } from "@/lib/streaming/parse";
+import type { MaxxenEvent } from "@/lib/streaming/types";
 
 /** Project memory for one conversation (null when untouched). Never throws. */
 function readMemoryCacheSafe(convId: string): unknown {
@@ -433,14 +435,25 @@ export default function ChatShell() {
         }
         if (!res.body) throw new Error("Streaming responses are not supported in this browser.");
         const reader = res.body.getReader();
-        const decoder = new TextDecoder();
+        // Canonical event stream (same protocol as the agent): pull deltas out
+        // of message.delta events; surface a fatal error event as a failure.
+        const parser = createEventParser();
+        const apply = (events: MaxxenEvent[]) => {
+          for (const ev of events) {
+            if (ev.type === "message.delta") {
+              acc += ev.text;
+              if (!raf) raf = window.requestAnimationFrame(flush);
+            } else if (ev.type === "error") {
+              throw new Error(ev.message || "The model returned an error.");
+            }
+          }
+        };
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          acc += decoder.decode(value, { stream: true });
-          if (!raf) raf = window.requestAnimationFrame(flush);
+          apply(parser.push(value));
         }
-        acc += decoder.decode();
+        apply(parser.flush());
         ok = true;
       } catch (err) {
         if (controller.signal.aborted) {
@@ -573,87 +586,55 @@ export default function ChatShell() {
           throw new Error(message);
         }
         const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buf = "";
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const parts = buf.split("\n\n");
-          buf = parts.pop() ?? "";
-          for (const part of parts) {
-            const line = part.split("\n").find((l) => l.startsWith("data:"));
-            if (!line) continue;
-            let ev: {
-              activity?: { phase?: string; text?: string };
-              delta?: string;
-              needsConfirm?: boolean;
-              summary?: string;
-              tool?: string;
-              toolStart?: { id?: string; tool?: string };
-              toolDelta?: { id?: string; tool?: string; chunk?: string };
-              toolDone?: { id?: string; tool?: string; ok?: boolean };
-              toolResult?: { id?: string; tool?: string; data?: unknown };
-              done?: boolean;
-              error?: string;
-            } | null = null;
-            try {
-              ev = JSON.parse(line.slice(5));
-            } catch {
-              continue;
+        const parser = createEventParser();
+        // Apply a batch of canonical events. Async because a deployment result
+        // kicks off a dynamic import for the deploy watchlist.
+        const handleEvents = async (events: MaxxenEvent[]) => {
+          for (const ev of events) {
+            if (ev.type === "error") throw new Error(ev.message || "Agent failed.");
+            if (ev.type === "agent.activity") {
+              const mark = ev.phase === "error" ? "✗ " : ev.phase === "planning" ? "◌ " : "✓ ";
+              pushActivity(`${mark}${ev.text}`);
             }
-            if (!ev) continue;
-            if (ev.error) throw new Error(ev.error);
-            if (ev.activity) {
-              const mark =
-                ev.activity.phase === "error" ? "✗ " : ev.activity.phase === "planning" ? "◌ " : "✓ ";
-              pushActivity(`${mark}${ev.activity.text ?? ""}`);
+            if (ev.type === "permission.request") {
+              setPendingConfirm({ summary: ev.summary, tool: ev.tool, convId, assistantId });
             }
-            if (ev.needsConfirm) {
-              setPendingConfirm({
-                summary: String(ev.summary || "this action"),
-                tool: String(ev.tool || "tool"),
-                convId,
-                assistantId,
-              });
-            }
-            if (ev.toolStart && typeof ev.toolStart.id === "string") {
-              const id = ev.toolStart.id;
-              const tool = String(ev.toolStart.tool || "tool");
+            if (ev.type === "tool.start") {
+              const id = ev.callId;
+              const tool = ev.tool;
               toolQueues.current.set(id, []);
               setToolRuns((prev) =>
                 prev.some((r) => r.id === id) ? prev : [...prev.slice(-5), { id, tool, text: "", done: false, ok: true }]
               );
             }
-            if (ev.toolDelta && typeof ev.toolDelta.id === "string" && typeof ev.toolDelta.chunk === "string") {
-              const q = toolQueues.current.get(ev.toolDelta.id);
-              if (q) q.push(ev.toolDelta.chunk);
-              else toolQueues.current.set(ev.toolDelta.id, [ev.toolDelta.chunk]);
+            if (ev.type === "tool.delta") {
+              const q = toolQueues.current.get(ev.callId);
+              if (q) q.push(ev.chunk);
+              else toolQueues.current.set(ev.callId, [ev.chunk]);
             }
-            if (ev.toolDone && typeof ev.toolDone.id === "string") {
-              toolDoneFlags.current.set(ev.toolDone.id, true);
-              const ok = ev.toolDone.ok !== false;
-              setToolRuns((prev) => prev.map((r) => (r.id === ev.toolDone?.id ? { ...r, ok } : r)));
-            }
-            if (ev.toolResult && ev.toolResult.tool === "vercel_deploy") {
-              const data = ev.toolResult.data as { id?: unknown; url?: unknown } | null;
-              if (data && typeof data.id === "string" && data.id) {
-                const { addWatch } = await import("@/lib/notify-watch").catch(() => ({ addWatch: null as never }));
-                if (typeof addWatch === "function") {
-                  addWatch(
-                    data.id,
-                    typeof data.url === "string" && data.url ? `https://${data.url}` : "",
-                    window.localStorage.getItem("maxxen_vercel_project") || "maxxen"
-                  );
+            if (ev.type === "tool.result") {
+              toolDoneFlags.current.set(ev.callId, true);
+              const ok = ev.ok;
+              setToolRuns((prev) => prev.map((r) => (r.id === ev.callId ? { ...r, ok } : r)));
+              if (ev.tool === "vercel_deploy") {
+                const data = ev.data as { id?: unknown; url?: unknown } | null;
+                if (data && typeof data.id === "string" && data.id) {
+                  const { addWatch } = await import("@/lib/notify-watch").catch(() => ({ addWatch: null as never }));
+                  if (typeof addWatch === "function") {
+                    addWatch(
+                      data.id,
+                      typeof data.url === "string" && data.url ? `https://${data.url}` : "",
+                      window.localStorage.getItem("maxxen_vercel_project") || "maxxen"
+                    );
+                  }
                 }
               }
             }
-            if (typeof ev.delta === "string" && ev.delta) {
-              acc += ev.delta;
-              const snap = acc;
-              useChatStore.getState().patchMessage(convId, assistantId, { content: snap });
+            if (ev.type === "message.delta") {
+              acc += ev.text;
+              useChatStore.getState().patchMessage(convId, assistantId, { content: acc });
             }
-            if (ev.done) {
+            if (ev.type === "run.complete") {
               useChatStore.getState().patchMessage(
                 convId,
                 assistantId,
@@ -663,7 +644,13 @@ export default function ChatShell() {
               );
             }
           }
+        };
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await handleEvents(parser.push(value));
         }
+        await handleEvents(parser.flush());
       } catch (err) {
         if (controller.signal.aborted) {
           useChatStore

@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
+import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
+import { adapterFor } from "@/lib/ai/providers/adapters";
+import { resolveProvider } from "@/lib/ai/providers/registry";
+import { ProviderError, type ModelEvent, type ModelRequest } from "@/lib/ai/types";
+import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
+import type { MaxxenEvent } from "@/lib/streaming/types";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 /**
- * MAXXEN Chat — BYOK streaming endpoint (replaces the vendor-key stub).
+ * MAXXEN Chat — BYOK streaming endpoint.
  *
  * POST /api/chat
- * Body: { messages, mode?, apiKey, baseURL?, model?, provider? }
- * Response: 200 text/plain — raw text chunks (deltas), no framing.
- * Errors: non-200 JSON { error }.
+ * Body: { messages, mode?, apiKey, baseURL?, model?, provider?, session? }
+ * Response: 200 text/event-stream — canonical MaxxenEvents (see lib/streaming).
+ * Errors before streaming: non-200 JSON { error }.
  *
- * Keys are per-request BYOK (never stored server-side). Modes mirror the
- * workspace MODES map; the selected mode changes the system instruction.
+ * Provider-specific logic now lives behind the provider adapter (lib/ai): this
+ * route only parses, resolves a provider, streams model events and encodes
+ * canonical events. Keys are per-request BYOK (never stored server-side).
  */
 
 export const runtime = "nodejs";
@@ -34,24 +41,7 @@ const MODES: Record<string, string> = {
 };
 
 // Shared Maxxen identity — one stable agent across every model provider.
-import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
 const BASE_SYSTEM = MAXXEN_IDENTITY;
-
-function hintFor(e: unknown, status?: number): string {
-  const raw = String((e as Error)?.message ?? e ?? "");
-  if (
-    status === 401 ||
-    status === 403 ||
-    /invalid api key|incorrect api key|unauthorized|invalid_api_key|authentication_error/i.test(raw)
-  )
-    return " — API key rejected. Re-paste the key for that provider in Settings.";
-  if (status === 404 || /model_not_found|does not exist|invalid model|not_found/i.test(raw))
-    return " — model ID unknown to that provider. Check the exact ID in Settings.";
-  if (status === 429 || /rate.?limit|quota|overloaded/i.test(raw))
-    return " — provider rate limit. Wait a bit or switch models.";
-  if (/fetch failed|ENOTFOUND|ECONN|network|timeout/i.test(raw)) return " — can't reach that Base URL. Check it in Settings.";
-  return "";
-}
 
 export async function POST(req: Request) {
   let body: {
@@ -66,6 +56,12 @@ export async function POST(req: Request) {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  // Session seam (Phase 0) — observe-only; see lib/security/guard. Flip
+  // SESSION_ENFORCED to true once the client sends a session token.
+  if (SESSION_ENFORCED && !hasValidSession(req, body)) {
+    return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
 
   const { messages, mode, apiKey, baseURL, model, provider } = body;
@@ -92,157 +88,68 @@ export async function POST(req: Request) {
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Bad base URL." }, { status: 400 });
   }
+  // --- Provider seam -----------------------------------------------------
+  // Resolve provider + adapter. This route no longer imports a provider SDK;
+  // provider-specific behaviour lives behind ProviderAdapter.complete().
+  let providerId = resolveProvider(provider, "custom");
+  if (providerId === "anthropic" || /api\.anthropic\.com/i.test(url)) providerId = "anthropic";
+  const adapter = adapterFor(providerId);
   const mid = (typeof model === "string" ? model : "").trim() || "gpt-4o-mini";
-  const useAnthropic = provider === "anthropic" || /api\.anthropic\.com/i.test(url);
+
+  const modelRequest: ModelRequest = {
+    apiKey,
+    baseURL: url,
+    model: mid,
+    system,
+    messages: sized,
+    temperature: 0.7,
+    mode: modeKey,
+    signal: req.signal,
+  };
+
+  // Establish the stream BEFORE responding, so immediate failures keep the
+  // existing JSON error contract (502) rather than a half-open event stream.
+  let events: AsyncIterable<ModelEvent>;
+  try {
+    events = await adapter.complete(modelRequest);
+  } catch (e) {
+    const pe = e as ProviderError;
+    return NextResponse.json({ error: pe?.message || "Completion failed" }, { status: 502 });
+  }
 
   const encoder = new TextEncoder();
+  const send = (controller: ReadableStreamDefaultController<Uint8Array>, event: MaxxenEvent) =>
+    controller.enqueue(encoder.encode(encodeEvent(event)));
 
-  // Anthropic branch — re-emit Anthropic deltas as raw text.
-  if (useAnthropic) {
-    let upstream: Response;
-    try {
-      upstream = await fetch(`${url.replace(/\/$/, "")}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: mid === "gpt-4o-mini" ? "claude-3-5-haiku-latest" : mid,
-          max_tokens: 4096,
-          stream: true,
-          system,
-          messages: sized,
-        }),
-        signal: req.signal,
-      });
-    } catch (e: unknown) {
-      const raw = e instanceof Error ? e.message : "Upstream unreachable";
-      return NextResponse.json({ error: raw + hintFor(e) }, { status: 502 });
-    }
-    if (!upstream.ok || !upstream.body) {
-      const j = await upstream.json().catch(() => ({} as Record<string, unknown>));
-      const err = j as { error?: { message?: string }; status?: number };
-      const msg = `${upstream.status} ${err?.error?.message || "Anthropic request failed"}`;
-      return NextResponse.json({ error: msg + hintFor(msg, upstream.status) }, { status: 502 });
-    }
-    const reader = upstream.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-    let empty = true;
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const parts = buf.split("\n\n");
-            buf = parts.pop() ?? "";
-            for (const part of parts) {
-              const line = part.split("\n").find((l) => l.startsWith("data:"));
-              if (!line) continue;
-              const payload = line.slice(5).trim();
-              if (!payload || payload === "[DONE]") continue;
-              try {
-                const ev = JSON.parse(payload) as { delta?: { text?: string } };
-                const delta = ev?.delta?.text;
-                if (typeof delta === "string" && delta) {
-                  empty = false;
-                  controller.enqueue(encoder.encode(delta));
-                }
-              } catch {
-                /* partial chunk — wait for more */
-              }
-            }
-          }
-          if (empty) {
-            controller.enqueue(encoder.encode("MAXXEN returned an empty response. Retry, or switch models."));
-          }
-        } catch (e: unknown) {
-          if (!(req.signal.aborted || (e as Error)?.name === "AbortError")) {
-            try {
-              controller.enqueue(encoder.encode("\n\nConnection to the model dropped mid-answer."));
-            } catch {
-              /* closed */
-            }
-          }
-        } finally {
-          try {
-            reader.releaseLock();
-          } catch {
-            /* noop */
-          }
-          controller.close();
-        }
-      },
-      cancel() {
-        reader.cancel().catch(() => undefined);
-      },
-    });
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-      },
-    });
-  }
-
-  // OpenAI-compatible branch.
-  let gen: AsyncIterable<{ choices: { delta?: { content?: string } }[] }>;
-  try {
-    const client = new OpenAI({ apiKey, baseURL: url });
-    gen = (await client.chat.completions.create({
-      model: mid,
-      messages: [{ role: "system", content: system }, ...sized],
-      temperature: 0.7,
-      stream: true,
-    })) as unknown as AsyncIterable<{ choices: { delta?: { content?: string } }[] }>;
-  } catch (e: unknown) {
-    const raw = e instanceof Error ? e.message : "Completion failed";
-    const status = (e as { status?: number })?.status;
-    return NextResponse.json({ error: raw + hintFor(e, status) }, { status: 502 });
-  }
-
-  let sawAny = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        for await (const chunk of gen) {
+        send(controller, { type: "run.start", mode: modeKey, model: mid });
+        for await (const ev of events) {
           if (req.signal.aborted) break;
-          const delta = chunk.choices[0]?.delta?.content;
-          if (delta) {
-            sawAny = true;
-            controller.enqueue(encoder.encode(delta));
-          }
+          if (ev.type === "delta") send(controller, { type: "message.delta", text: ev.text });
+          else if (ev.type === "error") send(controller, { type: "error", message: ev.message });
         }
-        if (!sawAny) {
-          controller.enqueue(encoder.encode("MAXXEN returned an empty response. Retry, or switch models."));
-        }
+        send(controller, { type: "run.complete", mode: modeKey });
       } catch (e: unknown) {
         if (!(req.signal.aborted || (e as Error)?.name === "AbortError")) {
           try {
-            controller.enqueue(encoder.encode("\n\nConnection to the model dropped mid-answer."));
+            send(controller, { type: "error", message: e instanceof Error ? e.message : "Stream failed." });
           } catch {
             /* closed */
           }
         }
       } finally {
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          /* already closed */
+        }
       }
     },
   });
 
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return new Response(stream, { status: 200, headers: STREAM_HEADERS });
+
+
 }
