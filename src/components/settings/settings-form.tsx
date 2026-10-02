@@ -129,7 +129,6 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
   const [showKey, setShowKey] = useState(false);
   const [githubToken, setGithubToken] = useState("");
   const [githubConnected, setGithubConnected] = useState(false);
-  const [githubConnected, setGithubConnected] = useState(false);
   const [vercelToken, setVercelToken] = useState("");
   const [vercelProject, setVercelProject] = useState("maxxen");
   const [composioKey, setComposioKey] = useState("");
