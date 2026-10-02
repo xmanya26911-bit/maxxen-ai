@@ -13,10 +13,10 @@ import { assertSafeBaseURL } from "./net-guard";
 //   require confirm:true too.
 
 export type Permission = "read" | "write" | "deploy" | "external";
-// userConfirmed must come from an explicit human gesture (UI "Confirm" button →
-// "Confirmed:" user message), NEVER from model-supplied tool args. The agent
+// confirmedTool must come from an explicit human gesture (UI "Confirm" button →
+// "Confirmed: <tool>" user message), NEVER from model-supplied tool args. The agent
 // loop strips args.confirm before execution — see app/api/agent/run.
-export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean; composioUserId?: string; timezone?: string; userLocation?: string; search?: { enabled: boolean; maxResults: number } };
+export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; confirmedTool?: string; composioUserId?: string; timezone?: string; userLocation?: string; search?: { enabled: boolean; maxResults: number } };
 
 export type ToolResult = { ok: boolean; summary: string; data?: unknown; error?: string; needsConfirm?: boolean };
 
@@ -179,7 +179,7 @@ export const registry: ToolDef[] = [
           needsConfirm: true,
         };
       }
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "project_create_repo") {
         return {
           ok: false,
           summary: `Creating repository "${name}" (${args.private ? "private" : "public"}) needs explicit confirmation.`,
@@ -224,7 +224,7 @@ export const registry: ToolDef[] = [
     },
     run: async (args, ctx) => {
       const token = needGithub(ctx.githubToken);
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "project_commit_file") {
         return { ok: false, summary: "Committing project files needs explicit confirmation.", needsConfirm: true };
       }
       const repo = typeof args.repo === "string" ? args.repo.trim() : "";
@@ -397,7 +397,7 @@ export const registry: ToolDef[] = [
     },
     run: async (args, ctx) => {
       const token = needGithub(ctx.githubToken);
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "project_open_pr") {
         return { ok: false, summary: "Opening a pull request needs explicit confirmation.", needsConfirm: true };
       }
       const repo = typeof args.repo === "string" ? args.repo.trim() : "";
@@ -512,7 +512,7 @@ export const registry: ToolDef[] = [
     run: async (args, ctx) => {
       // Human-gated: model-supplied args.confirm is IGNORED (stripped in agent/run).
       // Only ctx.userConfirmed (from explicit "Confirmed:" user message) allows deploy.
-      if (ctx.userConfirmed !== true) return { ok: false, summary: "Deployment needs explicit confirmation.", needsConfirm: true };
+      if (ctx.confirmedTool !== "vercel_deploy") return { ok: false, summary: "Deployment needs explicit confirmation.", needsConfirm: true };
       const token = needVercel(ctx.vercelToken);
       const project = need(args.project, "project");
       const files = Array.isArray(args.files) ? args.files : [];
@@ -560,7 +560,7 @@ export const registry: ToolDef[] = [
       const hay = `${slug} ${JSON.stringify(params)}`;
       const destructive = /send|delete|remove|create|update|publish|post|forward|reply|archive|share|invite|trash/i.test(hay);
       // Human-gated: ignore model-supplied args.confirm, require ctx.userConfirmed.
-      if (destructive && ctx.userConfirmed !== true)
+      if (destructive && ctx.confirmedTool !== "composio_execute")
         return { ok: false, summary: `“${slug}” changes the outside world — confirm explicitly first.`, needsConfirm: true };
       const { executeComposioTool, composioErrorDetail } = await import("./composio");
       const explicitUserId = typeof args.userId === "string" && args.userId.trim() ? args.userId.trim() : undefined;
@@ -594,7 +594,7 @@ export const registry: ToolDef[] = [
         return { ok: false, summary: "Refused: that looks like a credential — memories never store secrets." };
       const { isMemoryCategory } = await import("./user-memory/types");
       const category = isMemoryCategory(args.category) ? args.category : "fact";
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "memory_save") {
         return {
           ok: false,
           summary: `Ready to remember (${category}): "${content.slice(0, 140)}" — confirm to save it.`,
@@ -663,7 +663,7 @@ export const registry: ToolDef[] = [
       const { scanForSecrets } = await import("./secret-scan");
       if (scanForSecrets(content).length > 0)
         return { ok: false, summary: "Refused: that looks like a credential — memories never store secrets." };
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "memory_update") {
         return {
           ok: false,
           summary: `Ready to update memory ${id} to: "${content.slice(0, 140)}" — confirm to apply it.`,
@@ -691,7 +691,7 @@ export const registry: ToolDef[] = [
       const token = needGithub(ctx.githubToken);
       const id = typeof args.id === "string" ? args.id.trim() : "";
       if (!id) return { ok: false, summary: "Provide the memory id (recall first to find it)." };
-      if (ctx.userConfirmed !== true) {
+      if (ctx.confirmedTool !== "memory_delete") {
         return {
           ok: false,
           summary: `Ready to forget memory ${id} — confirm to delete it.`,
