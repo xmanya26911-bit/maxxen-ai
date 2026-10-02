@@ -413,6 +413,39 @@ export async function POST(req: Request) {
         }
         // Step budget exhausted: stream a closing summary, keep partial work.
         activity("Step budget reached — summarizing", "done");
+        if (isAnthropic) {
+          let sawText = false;
+          try {
+            const { toAnthropicMessages: toSummaryMsgs, accumulateAnthropicTurn: accumulateSummary } = await import("@/lib/agent/anthropic");
+            const sumSys = typeof history[0]?.content === "string" ? (history[0].content as string) : runtime.systemPrompt;
+            const sumRes = await fetch(`${url.endsWith("/") ? url.slice(0, -1) : url}/v1/messages`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
+              },
+              body: JSON.stringify({
+                model: resolveAnthropicModel(mid),
+                max_tokens: 4096,
+                stream: true,
+                system: sumSys,
+                messages: toSummaryMsgs([...history, { role: "user", content: "Summarize what was actually done vs what remains, briefly." }]),
+                temperature: 0.3,
+              }),
+              signal: req.signal,
+            });
+            if (!sumRes.ok || !sumRes.body) throw new Error(`Anthropic summary failed (HTTP ${sumRes.status}).`);
+            await accumulateSummary(sumRes.body.getReader(), req.signal, (t) => {
+              sawText = true;
+              send({ type: "message.delta", text: t });
+            });
+          } catch {
+            /* fall through to the fallback line below */
+          }
+          if (!sawText) send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
+        } else {
         try {
           let sawText = false;
           try {
@@ -436,6 +469,7 @@ export async function POST(req: Request) {
           if (!sawText) send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
         } catch {
           send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
+        }
         }
         send({ type: "run.complete", mode: "agent" });
         controller.close();
