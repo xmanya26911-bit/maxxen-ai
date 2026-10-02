@@ -8,10 +8,7 @@
  *   anthropic        -> POST https://opencode.ai/inference/anthropic/v1/messages (SSE)
  *   gemini           -> POST https://opencode.ai/inference/google/v1beta/models/<m>:streamGenerateContent (SSE)
  *
- * Auth: per the inference guide, "Free chat models can be called without [the
- * auth] header. Paid models require it." The adapter therefore sends NO
- * Authorization header for keyless free-model calls, and the caller's own
- * OpenCode key (Bearer, from Maxxen Settings — never from any OpenCode local
+ * Auth: the caller's own OpenCode key (Bearer, from Maxxen Settings — never from any OpenCode local
  * state) otherwise. A paid model selected without a key fails closed with a
  * clear "authentication required" ProviderError BEFORE any request is sent, so
  * a paid request can never be attempted anonymously by accident.
@@ -64,10 +61,7 @@ function withTimeout(upstream: AbortSignal | undefined): { signal: AbortSignal; 
 }
 
 function headers(apiKey: string): Record<string, string> {
-  // No header at all for keyless free calls (docs: free models need none).
-  const h: Record<string, string> = { "content-type": "application/json" };
-  if (apiKey.trim()) h["authorization"] = `Bearer ${apiKey.trim()}`;
-  return h;
+  return { "content-type": "application/json", authorization: `Bearer ${apiKey.trim()}` };
 }
 
 async function postSSE(
@@ -308,10 +302,11 @@ export const opencodeAdapter: ProviderAdapter = {
       );
     }
     const key = (request.apiKey || "").trim();
-    // Fail closed: a paid model without the user's key never leaves the server.
+    // Fail closed: no key — no request. Keyless free-tier calls are rejected
+    // upstream (403 FreeTierError), so attempting one would only burn a call.
     if (modelNeedsKey(model) && !key) {
       throw new ProviderError(
-        "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint (free models — names ending in -free — need no key)."
+        "OpenCode needs your own API key in Maxxen — its free tier only works inside the official OpenCode app (blocked upstream 2026-09-16). Add your OpenCode key in Settings → AI endpoint, then use a paid model."
       );
     }
     const ctx = withTimeout(request.signal);

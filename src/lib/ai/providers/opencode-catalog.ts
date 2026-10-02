@@ -120,9 +120,20 @@ export function familyForModelId(id: string): OpenCodeApiFamily {
   return "openai-chat";
 }
 
-/** A request for this model must carry the user's OpenCode key. */
+/**
+ * Whether a request for this model must carry the user's OpenCode key.
+ *
+ * Currently ALWAYS true: since 2026-09-16 OpenCode rejects free-tier calls
+ * from outside the official OpenCode client (403 FreeTierError, "can only be
+ * used from within OpenCode" — even with a valid account key, per
+ * anomalyco/opencode#49433/#49596/#49609). Spoofing the client to dodge the
+ * gate would be impersonation, so Maxxen requires the caller's own key for
+ * every OpenCode model and only offers paid models for actual use. Kept as a
+ * function (not a constant) so the gate can relax if upstream re-opens.
+ */
 export function modelNeedsKey(id: string): boolean {
-  return !isFreeModelId(id);
+  void id;
+  return true;
 }
 
 /** "mimo-v2.5-free" -> "MiMo V2.5 Free". Purely presentational. */
@@ -300,11 +311,19 @@ export function normalizeUpstreamError(status: number, detail: string): { messag
         message: `OpenCode rejected the key (401). ${d || "Re-paste your OpenCode key in Settings — free models need no key."}`,
         retryable: false,
       };
-    case 403:
+    case 403: {
+      const gated = /freetiererror|from within opencode/i.test(d);
+      if (gated)
+        return {
+          message:
+            "OpenCode’s free tier only works inside the official OpenCode app (blocked upstream 2026-09-16). In Maxxen, use an OpenCode paid model with your own key, or pick another provider.",
+          retryable: false,
+        };
       return {
         message: `OpenCode refused this model (403). ${d || "The model may require a different plan or key scope."}`,
         retryable: false,
       };
+    }
     case 404:
       return {
         message: `OpenCode has no such model or endpoint (404). ${d || "Refresh the model list — the catalog may have changed."}`,

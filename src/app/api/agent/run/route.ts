@@ -33,8 +33,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
   const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext } = body;
-  const opencodeAgent = provider === "opencode";
-  if (!apiKey && !opencodeAgent) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
+  if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
       { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, Gemini, or a Custom base URL like Groq, Ollama, OpenRouter). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
@@ -42,12 +41,11 @@ export async function POST(req: Request) {
     );
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages." }, { status: 400 });
   // OpenCode agent runs: chat-family models only (the loop speaks OpenAI-style
-  // function-calling), endpoint pinned server-side. Keyless runs are refused
-  // with an explicit message — the agent SDK client always sends auth, so
-  // free-keyless agent use stays unsupported (free chat works in /chat).
+  // function-calling), endpoint pinned server-side, caller key always required
+  // (free tier rejects non-OpenCode clients upstream).
   let url: string;
   if (provider === "opencode") {
-    const { familyForModelId, isFreeModelId, OPENCODE_CHAT_URL } = await import(
+    const { familyForModelId, OPENCODE_CHAT_URL } = await import(
       "@/lib/ai/providers/opencode-catalog"
     );
     const opencodeModel = ((model || "") as string).trim();
@@ -60,11 +58,7 @@ export async function POST(req: Request) {
       );
     if (!apiKey)
       return NextResponse.json(
-        {
-          error: isFreeModelId(opencodeModel)
-            ? "Agent runs need your OpenCode key even for free models (the agent client always sends auth). Add it in Settings → AI endpoint — or use this model keyless in /chat."
-            : "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint.",
-        },
+        { error: "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint." },
         { status: 400 }
       );
     url = OPENCODE_CHAT_URL;

@@ -65,10 +65,10 @@ export async function POST(req: Request) {
   }
 
   const { messages, mode, apiKey, baseURL, model, provider } = body;
-  // OpenCode free models are explicitly keyless per OpenCode docs — the
-  // adapter enforces paid-model auth, so the route permits an empty key here.
   const key = typeof apiKey === "string" ? apiKey : "";
-  if (!key && provider !== "opencode") {
+  // Note: OpenCode always needs a key (its free tier rejects non-OpenCode
+  // clients upstream); the adapter double-checks per model.
+  if (!key) {
     return NextResponse.json(
       { error: "Missing API key. Add your provider key in Settings → Endpoint, then retry." },
       { status: 400 }
