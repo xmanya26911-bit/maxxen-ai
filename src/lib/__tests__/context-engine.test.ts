@@ -28,7 +28,7 @@ describe("budgetMessages", () => {
   });
 
   it("keeps first + recent, drops middle oldest-first", () => {
-    const c = conv(30).map((m, i) => msg(m.role, `unique-${i} ` + "x".repeat(900)));
+    const c = conv(30).map((m, i) => msg(m.role, `unique-${i} ` + "x".repeat(400)));
     const out = budgetMessages(c, { maxTokens: 3000, reserveTokens: 500 });
     expect(out[0].content).toContain("unique-0");
     expect(out[out.length - 1].content).toContain("unique-29");
