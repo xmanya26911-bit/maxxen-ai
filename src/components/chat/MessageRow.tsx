@@ -2,7 +2,7 @@
 
 import { memo, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronDown, Copy, RotateCcw, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Copy, FileText, Image as ImageIcon, RotateCcw, TriangleAlert } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { copyText } from "./copy";
@@ -203,6 +203,24 @@ function MessageRowImpl({ message, streaming = false, onRetry }: MessageRowProps
             )}
             {message.role === "assistant" && message.sources && message.sources.length > 0 && (
               <SourcesBlock sources={message.sources} />
+            )}
+            {message.role === "user" && message.attachments && message.attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Attachments">
+                {message.attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    title={a.kind === "image" && !a.dataUrl ? `${a.name} (preview available when sent, not stored)` : `${a.name} · ${Math.max(1, Math.round(a.size / 1024))} KB${a.truncated ? " · truncated" : ""}`}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10.5px] text-white/60"
+                  >
+                    {a.kind === "image" ? (
+                      <ImageIcon size={11} aria-hidden="true" className="shrink-0" />
+                    ) : (
+                      <FileText size={11} aria-hidden="true" className="shrink-0" />
+                    )}
+                    <span className="truncate">{a.name}</span>
+                  </span>
+                ))}
+              </div>
             )}
             <time className="mt-1.5 block font-mono text-[10px] text-muted-foreground opacity-0 transition-opacity duration-200 group-hover:opacity-100">
               {time}
