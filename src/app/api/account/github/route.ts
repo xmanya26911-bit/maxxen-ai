@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getLinkedGithubToken, linkGithubToken, sessionEmail, unlinkGithubToken } from "@/lib/account-vault";
+import { getLinkedGithubToken, linkGithubToken, unlinkGithubToken } from "@/lib/account-vault";
+import { sessionEmail } from "@/lib/session";
 
 export async function GET(req: Request) {
   try {
