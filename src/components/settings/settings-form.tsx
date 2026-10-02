@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Eye, EyeOff, Loader2, LogOut, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Blocks, Brain, Check, Eye, EyeOff, KeyRound, Loader2, LogOut, TriangleAlert } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
@@ -79,7 +79,38 @@ function IntegrationStatus({
 }
 
 
-export function SettingsForm() {
+export type SettingsView = "hub" | "endpoints" | "memory" | "integrations";
+
+const VIEW_META: Record<SettingsView, { crumb: string; title: string; sub: string }> = {
+  hub: {
+    crumb: "/ settings",
+    title: "Workspace settings",
+    sub: "Your endpoint, your tokens, your vault. Everything syncs encrypted to YOUR GitHub.",
+  },
+  endpoints: {
+    crumb: "/ settings / endpoints",
+    title: "AI endpoints",
+    sub: "Providers, keys and models. Used for every chat generation.",
+  },
+  memory: {
+    crumb: "/ settings / memory",
+    title: "Memory",
+    sub: "What Maxxen remembers. Stored only in your private maxxen-data repo.",
+  },
+  integrations: {
+    crumb: "/ settings / integrations",
+    title: "Integrations",
+    sub: "GitHub storage, Vercel deploys, Composio plugins. Vault sync and controls.",
+  },
+};
+
+const HUB_CARDS = [
+  { href: "/settings/endpoints", icon: KeyRound, title: "AI endpoints", desc: "Providers, keys and models." },
+  { href: "/settings/memory", icon: Brain, title: "Memory", desc: "View, search, edit, forget." },
+  { href: "/settings/integrations", icon: Blocks, title: "Integrations", desc: "GitHub, Vercel, Composio, vault." },
+] as const;
+
+export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
   const signOut = useAuthStore((s) => s.signOut);
@@ -320,7 +351,7 @@ export function SettingsForm() {
           <ArrowLeft size={13} aria-hidden="true" />
           Chat
         </Link>
-        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/30">/ settings</span>
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-white/30">{VIEW_META[view].crumb}</span>
         <span className="ml-auto hidden font-mono text-[11px] text-white/40 sm:block">
           {session?.email ?? ""}
         </span>
@@ -338,10 +369,8 @@ export function SettingsForm() {
       </header>
 
       <main className="mx-auto w-full max-w-2xl px-4 py-8 md:py-12">
-        <h1 className="text-xl font-semibold tracking-[-0.02em]">Workspace settings</h1>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          Your endpoint, your tokens, your vault. Everything syncs encrypted to YOUR GitHub.
-        </p>
+        <h1 className="text-xl font-semibold tracking-[-0.02em]">{VIEW_META[view].title}</h1>
+        <p className="mt-1 text-[13px] text-muted-foreground">{VIEW_META[view].sub}</p>
 
         {status && (
           <div
@@ -361,7 +390,27 @@ export function SettingsForm() {
             <span>{status}</span>
           </div>
         )}
+        {view === "hub" && (
+          <nav aria-label="Settings sections" className="mt-6 grid gap-3">
+            {HUB_CARDS.map((c) => (
+              <Link
+                key={c.href}
+                href={c.href}
+                className="mx-focus mx-press group flex items-center gap-3.5 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/70 transition-colors group-hover:text-white">
+                  <c.icon size={16} aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[14px] font-semibold">{c.title}</span>
+                  <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">{c.desc}</span>
+                </span>
+              </Link>
+            ))}
+          </nav>
+        )}
 
+        {view === "endpoints" && (
         <section aria-labelledby="endpoint-h" className="mt-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
           <div className="flex items-center gap-2">
             <h2 id="endpoint-h" className="text-[15px] font-semibold">AI endpoint</h2>
@@ -458,9 +507,13 @@ export function SettingsForm() {
             </div>
                       </div>
         </section>
+        )}
 
+        {view === "memory" && (
         <MemorySection />
+        )}
 
+        {view === "integrations" && (
         <section aria-labelledby="tokens-h" className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
           <h2 id="tokens-h" className="text-[15px] font-semibold">Integrations</h2>
           <p className="mt-1 text-[12.5px] text-muted-foreground">
@@ -593,7 +646,9 @@ export function SettingsForm() {
             )}
           </div>
         </section>
+        )}
 
+        {view !== "hub" && (
         <div className="mt-5 flex flex-wrap items-center gap-2.5">
           <button type="button" onClick={saveAll} disabled={saving} className={BTN_PRIMARY}>
             {saving && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
@@ -606,6 +661,7 @@ export function SettingsForm() {
         <p className="mt-3 font-mono text-[10.5px] leading-relaxed text-white/30">
           Preferences sync as plain text, keys as AES-256-GCM ciphertext — both in YOUR private maxxen-data repo.
         </p>
+        )}
       </main>
     </div>
   );
