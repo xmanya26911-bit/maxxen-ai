@@ -649,6 +649,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
         )}
 
         {view !== "hub" && (
+        <>
         <div className="mt-5 flex flex-wrap items-center gap-2.5">
           <button type="button" onClick={saveAll} disabled={saving} className={BTN_PRIMARY}>
             {saving && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
@@ -661,6 +662,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
         <p className="mt-3 font-mono text-[10.5px] leading-relaxed text-white/30">
           Preferences sync as plain text, keys as AES-256-GCM ciphertext — both in YOUR private maxxen-data repo.
         </p>
+        </>
         )}
       </main>
     </div>
