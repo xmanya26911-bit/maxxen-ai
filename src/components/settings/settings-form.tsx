@@ -184,7 +184,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
       setComposioUserId(ls("maxxen_composio_user_id"));
       setReady(true);
       const stored = useAuthStore.getState().session;
-      if (stored?.token && ls("maxxen_github_token")) {
+      if (stored?.token) {
         const v = await pullVault(stored.token);
         if (v.ok && v.applied > 0) {
           setBaseURL(ls("maxxen_baseurl"));
