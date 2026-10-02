@@ -217,7 +217,7 @@ export async function POST(req: Request) {
                 stream: true,
                 system: sysText,
                 messages: visImages.length
-                  ? withAnthropicImages(toAnthropicMessages(history), visImages)
+                  ? withAnthropicImageParts(toAnthropicMessages(history), visImages)
                   : toAnthropicMessages(history),
                 tools: toAnthropicTools(toOpenAITools(runtime.tools)),
                 temperature: 0.3,
