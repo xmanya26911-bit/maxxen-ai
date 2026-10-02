@@ -501,7 +501,7 @@ function triggerMemoryExtract(
       try {
         const endpoint = endpointCredentials();
         if (!endpoint) {
-          throw new Error("Add your provider key in Settings → Endpoint, then retry.");
+          throw new Error("Add your provider key in Settings → AI endpoints, then retry.");
         }
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -637,7 +637,7 @@ function triggerMemoryExtract(
       if (!endpoint) {
         useChatStore.getState().patchMessage(convId, assistantId, {
           failed: true,
-          content: "Add your provider key in Settings → Endpoint, then retry.",
+          content: "Add your provider key in Settings → AI endpoints, then retry.",
         });
         return;
       }

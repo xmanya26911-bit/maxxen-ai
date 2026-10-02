@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   // clients upstream); the adapter double-checks per model.
   if (!key) {
     return NextResponse.json(
-      { error: "Missing API key. Add your provider key in Settings → Endpoint, then retry." },
+      { error: "Missing API key. Add your provider key in Settings → AI endpoints, then retry." },
       { status: 400 }
     );
   }
