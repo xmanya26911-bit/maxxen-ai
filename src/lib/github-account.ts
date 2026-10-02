@@ -1,4 +1,5 @@
-import { getLinkedGithubToken, sessionEmail } from "@/lib/account-vault";
+import { getLinkedGithubToken } from "@/lib/account-vault";
+import { sessionEmail } from "@/lib/session";
 
 export async function resolveGithubToken(
   req: Request,
