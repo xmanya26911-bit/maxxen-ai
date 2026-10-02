@@ -783,6 +783,26 @@ function triggerMemoryExtract(
               acc += ev.text;
               useChatStore.getState().patchMessage(convId, assistantId, { content: acc });
             }
+            if (ev.type === "source.add") {
+              const st8 = useChatStore.getState();
+              const cur = st8.conversations.find((c) => c.id === convId)?.messages.find((m) => m.id === assistantId)?.sources ?? [];
+              if (!cur.some((s) => s.id === ev.id)) {
+                st8.patchMessage(convId, assistantId, {
+                  sources: [
+                    ...cur,
+                    {
+                      id: ev.id,
+                      title: ev.title,
+                      url: ev.url,
+                      ...(ev.domain ? { domain: ev.domain } : {}),
+                      ...(ev.snippet ? { snippet: ev.snippet } : {}),
+                      ...(ev.publishedAt ? { publishedAt: ev.publishedAt } : {}),
+                      kind: ev.kind,
+                    },
+                  ],
+                });
+              }
+            }
             if (ev.type === "run.complete") {
               useChatStore.getState().patchMessage(
                 convId,

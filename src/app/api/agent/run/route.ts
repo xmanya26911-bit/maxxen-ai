@@ -10,6 +10,7 @@ import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { AgentPhase, MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
+import { collectRunSources, type Source } from "@/lib/citations";
 import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
@@ -256,6 +257,8 @@ export async function POST(req: Request) {
             return null;
           }
         };
+        const runSources: Source[] = [];
+        let sourceSeq = 0;
         for (let step = 0; step < steps; step++) {
           if (Date.now() > deadline) {
             activity("Time budget reached — summarizing with partial progress", "done");
@@ -381,7 +384,29 @@ export async function POST(req: Request) {
             // as small word-boundary chunks (toolDelta) and the client
             // typewriter-renders them, so long tool outputs stream live
             // instead of landing as one block at step end.
-            const resultText = res.ok ? res.summary : `Failed: ${res.summary}`;
+            // Sources: successful web/fetch results become citable objects.
+            // Their [sN] tags prefix the result the model sees, so citations
+            // reference real retrievals, never fabricated ones.
+            let sourceTags = "";
+            if (res.ok && (def.id === "web_search" || def.id === "fetch_webpage")) {
+              const made = collectRunSources(def.id, res.data, sourceSeq);
+              sourceSeq += made.length;
+              for (const s of made) {
+                runSources.push(s);
+                send({
+                  type: "source.add",
+                  id: s.id,
+                  title: s.title,
+                  url: s.url,
+                  ...(s.domain ? { domain: s.domain } : {}),
+                  ...(s.snippet ? { snippet: s.snippet } : {}),
+                  ...(s.publishedAt ? { publishedAt: s.publishedAt } : {}),
+                  kind: s.kind,
+                });
+              }
+              if (made.length) sourceTags = made.map((s) => `[${s.id}]`).join(" ") + " ";
+            }
+            const resultText = res.ok ? sourceTags + res.summary : `Failed: ${res.summary}`;
             const dataExcerpt =
               res.ok && res.data !== undefined && res.data !== null
                 ? `\n${JSON.stringify(res.data).slice(0, 1200)}`

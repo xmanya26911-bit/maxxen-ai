@@ -2,11 +2,12 @@
 
 import { memo, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, Copy, RotateCcw, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, Copy, RotateCcw, TriangleAlert } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { copyText } from "./copy";
 import MarkdownLite from "./MarkdownLite";
+import { linkifyCitations, type Source } from "@/lib/citations";
 import type { Message } from "./types";
 
 /** "14:05" locale stamp shown on hover under each message. */
@@ -185,7 +186,7 @@ function MessageRowImpl({ message, streaming = false, onRetry }: MessageRowProps
               </div>
             ) : (
               <div className="text-[15px] leading-relaxed">
-                <MarkdownLite content={message.content} />
+                <MarkdownLite content={linkifyCitations(message.content, message.sources)} />
                 {streaming && (
                   <span
                     aria-hidden="true"
@@ -200,6 +201,9 @@ function MessageRowImpl({ message, streaming = false, onRetry }: MessageRowProps
             {message.role === "assistant" && !streaming && message.blocks && message.blocks.length > 0 && (
               <ProjectAnalytics blocks={message.blocks} />
             )}
+            {message.role === "assistant" && message.sources && message.sources.length > 0 && (
+              <SourcesBlock sources={message.sources} />
+            )}
             <time className="mt-1.5 block font-mono text-[10px] text-muted-foreground opacity-0 transition-opacity duration-200 group-hover:opacity-100">
               {time}
             </time>
@@ -207,6 +211,51 @@ function MessageRowImpl({ message, streaming = false, onRetry }: MessageRowProps
         </>
       )}
     </motion.div>
+  );
+}
+
+function SourcesBlock({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2.5 overflow-hidden rounded-lg border border-white/[0.07] bg-white/[0.02]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mx-focus flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+          Sources · {sources.length}
+        </span>
+        <ChevronDown
+          size={13}
+          aria-hidden="true"
+          className={cn("ml-auto text-white/35 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && (
+        <ul className="grid gap-1.5 border-t border-white/[0.06] px-3 py-2.5">
+          {sources.map((s) => (
+            <li key={s.id} className="min-w-0">
+              <a
+                href={s.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mx-focus block truncate text-[12.5px] font-medium text-white/85 hover:text-white hover:underline"
+              >
+                <span className="mr-1.5 font-mono text-[10px] text-white/40">[{s.id}]</span>
+                {s.title}
+              </a>
+              <p className="mt-0.5 truncate font-mono text-[10px] text-white/35">
+                {s.domain ?? s.url}
+                {s.publishedAt ? ` · ${s.publishedAt}` : ""} · {s.kind === "page" ? "read page" : "snippet"}
+              </p>
+              {s.snippet && <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-white/55">{s.snippet}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

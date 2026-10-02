@@ -18,13 +18,14 @@ describe("chat file shape", () => {
       updatedAt: 2,
       messages: [
         { id: "m1", role: "user", content: "hi", blocks: [{ x: 1 }] } as never,
-        { id: "m2", role: "assistant", content: "y".repeat(20000) },
+        { id: "m2", role: "assistant", content: "y".repeat(20000), sources: [{ id: "s1", title: "T", url: "https://x.test", kind: "snippet" }, { title: "bad" }] },
         { id: "m3", role: "system", content: "drop me" },
       ],
     });
     expect(file.messages).toHaveLength(2);
     expect(file.messages[0]).not.toHaveProperty("blocks");
     expect(file.messages[1].content.length).toBeLessThanOrEqual(12000);
+    expect(file.messages[1].sources).toEqual([{ id: "s1", title: "T", url: "https://x.test", kind: "snippet" }]);
     expect(chatFilePath("c1")).toBe("chats/c1.json");
   });
 

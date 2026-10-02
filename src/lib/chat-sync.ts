@@ -9,6 +9,8 @@
  * Isomorphic + dependency-free (same shapes used by the hook and tests).
  */
 
+import type { Source } from "./citations";
+
 export const CHATS_DIR = "chats";
 export const CHAT_INDEX_PATH = "chats/_index.json";
 export const MAX_SYNCED_MESSAGES = 120;
@@ -52,17 +54,38 @@ export function toConversationFile(conv: {
   title: string;
   createdAt: number;
   updatedAt: number;
-  messages: { id: string; role: string; content: string; createdAt?: number; failed?: boolean }[];
+  messages: { id: string; role: string; content: string; createdAt?: number; failed?: boolean; sources?: unknown }[],
 }): ConversationFile {
   const messages: SyncedMessage[] = [];
   for (const m of conv.messages.slice(-MAX_SYNCED_MESSAGES)) {
     if ((m.role !== "user" && m.role !== "assistant") || typeof m.content !== "string") continue;
+    const sources = Array.isArray((m as { sources?: unknown }).sources)
+      ? ((m as { sources?: unknown }).sources as unknown[])
+          .map((s) => {
+            if (!s || typeof s !== "object") return null;
+            const o = s as Record<string, unknown>;
+            if (typeof o.id !== "string" || typeof o.title !== "string" || typeof o.url !== "string") return null;
+            const out: Source = {
+              id: o.id.slice(0, 32),
+              title: o.title.slice(0, 200),
+              url: o.url.slice(0, 500),
+              kind: o.kind === "page" ? "page" : "snippet",
+            };
+            if (typeof o.domain === "string") out.domain = o.domain.slice(0, 120);
+            if (typeof o.snippet === "string") out.snippet = o.snippet.slice(0, 400);
+            if (typeof o.publishedAt === "string") out.publishedAt = o.publishedAt.slice(0, 40);
+            return out;
+          })
+          .filter((s): s is Source => s !== null)
+          .slice(0, 10)
+      : [];
     messages.push({
       id: String(m.id),
       role: m.role,
       content: m.content.slice(0, MAX_SYNCED_CONTENT_CHARS),
       createdAt: typeof m.createdAt === "number" ? m.createdAt : Date.now(),
       ...(m.failed ? { failed: true } : {}),
+      ...(sources.length ? { sources } : {}),
     });
   }
   return {
