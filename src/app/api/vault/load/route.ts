@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
 import { verifySession } from "@/lib/session";
+import { getLinkedGithubToken } from "@/lib/account-vault";
 import { SETTINGS_PATH, openSecrets, type StoredSettings } from "@/lib/vault";
 
 // Loads the calling USER's preferences + decrypts their vault from THEIR OWN
@@ -11,9 +12,10 @@ export async function POST(req: Request) {
     const { session, githubToken } = await req.json();
     const email = verifySession(String(session || ""));
     if (!email) return NextResponse.json({ error: "Session expired. Log in again." }, { status: 401 });
-    if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token first (Settings → Storage)." }, { status: 400 });
+    const resolvedToken = typeof githubToken === "string" && githubToken.trim() ? githubToken.trim() : await getLinkedGithubToken(email);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
 
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
     try {
@@ -37,6 +39,7 @@ export async function POST(req: Request) {
     if (stored.vault && typeof stored.vault === "object") {
       try {
         secrets = openSecrets(email, stored.vault);
+        delete secrets.githubToken;
       } catch {
         return NextResponse.json({ error: "Vault locked — it was sealed in a different session. Re-save from Settings to re-seal." }, { status: 403 });
       }
