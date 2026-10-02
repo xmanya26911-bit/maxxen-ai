@@ -16,12 +16,23 @@ export const CHAT_INDEX_PATH = "chats/_index.json";
 export const MAX_SYNCED_MESSAGES = 120;
 export const MAX_SYNCED_CONTENT_CHARS = 12_000;
 
+export interface SyncedAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: "text";
+  text: string;
+  truncated?: boolean;
+}
+
 export interface SyncedMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: number;
   failed?: boolean;
+  attachments?: SyncedAttachment[];
 }
 
 export interface ConversationFile {
@@ -79,6 +90,23 @@ export function toConversationFile(conv: {
           .filter((s): s is Source => s !== null)
           .slice(0, 10)
       : [];
+    const rawAttachments = (m as { attachments?: unknown }).attachments;
+    const attachments = Array.isArray(rawAttachments)
+      ? rawAttachments.map((a) => {
+          if (!a || typeof a !== "object") return null;
+          const o = a as Record<string, unknown>;
+          if (o.kind !== "text" || typeof o.text !== "string") return null;
+          return {
+            id: typeof o.id === "string" ? o.id.slice(0, 64) : `att_${Date.now().toString(36)}`,
+            name: typeof o.name === "string" ? o.name.slice(0, 120) : "file",
+            mimeType: typeof o.mimeType === "string" ? o.mimeType.slice(0, 120) : "text/plain",
+            size: typeof o.size === "number" && Number.isFinite(o.size) ? o.size : 0,
+            kind: "text" as const,
+            text: o.text.slice(0, MAX_SYNC_TEXT_BYTES),
+            ...(o.truncated || o.text.length > MAX_SYNC_TEXT_BYTES ? { truncated: true } : {}),
+          };
+        }).filter((x): x is SyncedAttachment => x !== null).slice(0, 5)
+      : [];
     messages.push({
       id: String(m.id),
       role: m.role,
@@ -86,6 +114,7 @@ export function toConversationFile(conv: {
       createdAt: typeof m.createdAt === "number" ? m.createdAt : Date.now(),
       ...(m.failed ? { failed: true } : {}),
       ...(sources.length ? { sources } : {}),
+      ...(attachments.length ? { attachments } : {}),
     });
   }
   return {
