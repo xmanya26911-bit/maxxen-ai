@@ -68,6 +68,7 @@ export async function POST(req: Request) {
         { error: "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint." },
         { status: 400 }
       );
+  }
 
   const steps = Math.min(Math.max(Number(maxSteps) || MAX_STEPS, 1), 10);
   // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
