@@ -1,5 +1,3 @@
-import "server-only";
-
 import crypto from "node:crypto";
 import { del, get, put } from "@vercel/blob";
 import { serverSecret } from "./session";
