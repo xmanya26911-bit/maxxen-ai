@@ -130,28 +130,67 @@ export async function POST(req: Request) {
           );
         }
         for (let step = 0; step < steps; step++) {
-          let out: any;
+          // True upstream streaming: text deltas forward live (token by
+          // token) while tool calls accumulate across chunks.
+          let upstream: any;
           try {
-            out = await client.chat.completions.create({
+            upstream = await client.chat.completions.create({
               model: mid,
               messages: history,
               temperature: 0.3,
               tools: openaiTools,
               tool_choice: "auto" as any,
+              stream: true,
             });
           } catch (e: any) {
             fail(e?.message || "Model call failed.");
             return;
           }
-          const choice = out.choices[0]?.message;
-          const calls = (choice as any)?.tool_calls || [];
-          const text = choice?.content || "";
+          let text = "";
+          const slots: { id: string; name: string; args: string }[] = [];
+          try {
+            for await (const chunk of upstream as any) {
+              if (req.signal.aborted) break;
+              const delta: any = chunk?.choices?.[0]?.delta;
+              if (!delta) continue;
+              if (typeof delta.content === "string" && delta.content) {
+                text += delta.content;
+                send({ type: "message.delta", text: delta.content });
+              }
+              for (const tc of delta.tool_calls ?? []) {
+                const key = Number.isFinite(tc?.index) ? Number(tc.index) : slots.length;
+                if (!slots[key]) slots[key] = { id: "", name: "", args: "" };
+                let slot = slots[key];
+                // A new call reusing an occupied slot (gateways omitting indices).
+                if (slot.name && typeof tc?.function?.name === "string" && tc.function.name && tc.function.name !== slot.name) {
+                  slot = { id: "", name: "", args: "" };
+                  slots.push(slot);
+                }
+                if (typeof tc?.id === "string" && tc.id) slot.id = tc.id;
+                if (typeof tc?.function?.name === "string" && tc.function.name) slot.name = tc.function.name;
+                if (typeof tc?.function?.arguments === "string") slot.args += tc.function.arguments;
+              }
+            }
+          } catch (e: any) {
+            const detail = String(e?.message || e).slice(0, 200);
+            if (!text.trim() && !slots.some((s) => s && s.name)) {
+              fail(detail || "Model stream failed.");
+              return;
+            }
+            activity(`Upstream stream ended early: ${detail}`, "error");
+          }
+          const calls = slots
+            .filter((s) => s && s.name)
+            .map((s, i) => ({
+              id: s.id || `call_maxxen_${step}_${i}`,
+              type: "function" as const,
+              function: { name: s.name, arguments: s.args || "{}" },
+            }));
           if (!calls.length) {
             if (!text.trim()) {
               fail("Model returned nothing. Retry, or switch models.");
               return;
             }
-            for (const ch of text) send({ type: "message.delta", text: ch });
             send({ type: "run.complete", mode: "agent" });
             controller.close();
             return;
@@ -237,13 +276,26 @@ export async function POST(req: Request) {
         // Step budget exhausted: stream a closing summary, keep partial work.
         activity("Step budget reached — summarizing", "done");
         try {
-          const fin: any = await client.chat.completions.create({
-            model: mid,
-            messages: [...history, { role: "user", content: "Summarize what was actually done vs what remains, briefly." }],
-            temperature: 0.3,
-          });
-          const text = fin.choices[0]?.message?.content || "Stopped at the step budget with partial progress kept.";
-          for (const ch of text) send({ type: "message.delta", text: ch });
+          let sawText = false;
+          try {
+            const fin: any = await client.chat.completions.create({
+              model: mid,
+              messages: [...history, { role: "user", content: "Summarize what was actually done vs what remains, briefly." }],
+              temperature: 0.3,
+              stream: true,
+            });
+            for await (const chunk of fin as any) {
+              if (req.signal.aborted) break;
+              const delta = chunk?.choices?.[0]?.delta?.content;
+              if (typeof delta === "string" && delta) {
+                sawText = true;
+                send({ type: "message.delta", text: delta });
+              }
+            }
+          } catch {
+            /* fall through to the fallback line below */
+          }
+          if (!sawText) send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
         } catch {
           send({ type: "message.delta", text: "Stopped at the step budget with partial progress kept." });
         }
