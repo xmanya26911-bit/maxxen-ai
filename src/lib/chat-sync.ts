@@ -34,6 +34,7 @@ export interface SyncedMessage {
   createdAt: number;
   failed?: boolean;
   attachments?: SyncedAttachment[];
+  sources?: Source[];
 }
 
 export interface ConversationFile {
