@@ -318,13 +318,18 @@ export default function ChatShell() {
         router.replace("/login");
         return;
       }
-      if (session.token) {
-        const email = await validateSession(session.token);
-        if (!email) {
-          useAuthStore.getState().signOut();
-          router.replace("/login");
-          return;
-        }
+      if (!session.token) {
+        // Legacy sessions cannot authenticate API requests now that model routes
+        // enforce signed sessions; require a clean re-login instead of a guaranteed 401.
+        useAuthStore.getState().signOut();
+        router.replace("/login");
+        return;
+      }
+      const email = await validateSession(session.token);
+      if (!email) {
+        useAuthStore.getState().signOut();
+        router.replace("/login");
+        return;
       }
       setAuthChecked(true);
     })();
