@@ -4,6 +4,8 @@
  * and the artifact workspace pane.
  */
 import type { CHAT_MODES } from "@/lib/constants";
+import type { Attachment } from "@/lib/attachments";
+import type { Source } from "@/lib/citations";
 
 /** Chat mode ids — mirrors CHAT_MODES in src/lib/constants.ts. */
 export type ChatMode = (typeof CHAT_MODES)[number]["id"];
@@ -30,6 +32,10 @@ export interface Message {
   mode?: ChatMode;
   /** Code blocks cached on the message after a successful stream (real-app Message shape). */
   blocks?: CodeBlock[];
+  /** Retrieved sources backing this answer (resolves [sN] citations). */
+  sources?: Source[];
+  /** User-attached files (text persisted; images session-only). */
+  attachments?: Attachment[];
 }
 
 /** A persisted conversation thread. */
