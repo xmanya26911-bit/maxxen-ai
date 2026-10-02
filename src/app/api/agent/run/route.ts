@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertSafeBaseURL } from "@/lib/net-guard";
+import { resolveEndpoint, type ResolvedEndpoint } from "@/lib/ai/request";
 import { budgeted, sanitizeMessages } from "@/lib/context";
 import { toOpenAITools, type Ctx } from "@/lib/tools";
 import { buildRuntime } from "@/lib/maxxen-runtime";
@@ -45,11 +45,16 @@ export async function POST(req: Request) {
   // OpenCode agent runs: chat-family models only (the loop speaks OpenAI-style
   // function-calling), endpoint pinned server-side, caller key always required
   // (free tier rejects non-OpenCode clients upstream).
-  let url: string;
+  let endpoint: ResolvedEndpoint;
+  try {
+    endpoint = resolveEndpoint({ provider, baseURL, model });
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Bad base URL." }, { status: 400 });
+  }
+  const url = endpoint.url;
+  const mid = endpoint.model;
   if (provider === "opencode") {
-    const { familyForModelId, OPENCODE_CHAT_URL } = await import(
-      "@/lib/ai/providers/opencode-catalog"
-    );
+    const { familyForModelId } = await import("@/lib/ai/providers/opencode-catalog");
     const opencodeModel = ((model || "") as string).trim();
     if (!opencodeModel)
       return NextResponse.json({ error: "Pick an OpenCode model first (Settings → AI endpoint)." }, { status: 400 });
@@ -63,15 +68,7 @@ export async function POST(req: Request) {
         { error: "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint." },
         { status: 400 }
       );
-    url = OPENCODE_CHAT_URL;
-  } else {
-    try {
-      url = assertSafeBaseURL(baseURL, "https://api.openai.com/v1");
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
-    }
-  }
-  const mid = ((model || "") as string).trim() || "gpt-4o-mini";
+
   const steps = Math.min(Math.max(Number(maxSteps) || MAX_STEPS, 1), 10);
   // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
   // authorizes world-changing tools. Model-supplied confirm is stripped below.

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { assertSafeBaseURL } from "@/lib/net-guard";
 import { budgeted, sanitizeMessages } from "@/lib/context";
 import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
 import { adapterFor } from "@/lib/ai/providers/adapters";
-import { resolveProvider } from "@/lib/ai/providers/registry";
+import { resolveEndpoint, type ResolvedEndpoint } from "@/lib/ai/request";
 import { ProviderError, type ModelEvent, type ModelRequest } from "@/lib/ai/types";
 import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { MaxxenEvent } from "@/lib/streaming/types";
@@ -96,19 +95,21 @@ export async function POST(req: Request) {
   const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}${userMemBlock ? `\n\n${userMemBlock}` : ""}${timeLocBlock ? `\n\n${timeLocBlock}` : ""}`;
   const sized = budgeted(clean);
 
-  let url: string;
+  // Shared preamble (lib/ai/request): provider resolution, URL pin/assert,
+  // model default. Key rules + Anthropic policy stay route-specific.
+  let resolved: ResolvedEndpoint;
   try {
-    url = assertSafeBaseURL(baseURL, "https://api.openai.com/v1");
+    resolved = resolveEndpoint({ provider, baseURL, model });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Bad base URL." }, { status: 400 });
   }
   // --- Provider seam -----------------------------------------------------
-  // Resolve provider + adapter. This route no longer imports a provider SDK;
-  // provider-specific behaviour lives behind ProviderAdapter.complete().
-  let providerId = resolveProvider(provider, "custom");
+  // Resolve adapter. Provider-specific behaviour lives behind ProviderAdapter.complete().
+  let providerId = resolved.providerId;
+  const url = resolved.url;
   if (providerId === "anthropic" || /api\.anthropic\.com/i.test(url)) providerId = "anthropic";
   const adapter = adapterFor(providerId);
-  const mid = (typeof model === "string" ? model : "").trim() || "gpt-4o-mini";
+  const mid = resolved.model;
 
   const modelRequest: ModelRequest = {
     apiKey: key,
