@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { budgeted, sanitizeMessages } from "@/lib/context";
 import { MAXXEN_IDENTITY } from "@/lib/maxxen-runtime";
 import { adapterFor } from "@/lib/ai/providers/adapters";
-import { resolveEndpoint, type ResolvedEndpoint } from "@/lib/ai/request";
+import { assembleSystemPrompt, resolveEndpoint, type ResolvedEndpoint } from "@/lib/ai/request";
 import { ProviderError, type ModelEvent, type ModelRequest } from "@/lib/ai/types";
 import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { MaxxenEvent } from "@/lib/streaming/types";
@@ -92,7 +92,11 @@ export async function POST(req: Request) {
     timezone: typeof timezone === "string" ? timezone : undefined,
     userLocation: typeof userLocation === "string" ? userLocation : undefined,
   });
-  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}${userMemBlock ? `\n\n${userMemBlock}` : ""}${timeLocBlock ? `\n\n${timeLocBlock}` : ""}`;
+  const system = assembleSystemPrompt([
+    `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}",
+    userMemBlock,
+    timeLocBlock,
+  ]);
   const sized = budgeted(clean);
 
   // Shared preamble (lib/ai/request): provider resolution, URL pin/assert,
