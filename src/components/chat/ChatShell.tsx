@@ -11,6 +11,7 @@ import Sidebar from "./Sidebar";
 import WorkspacePane from "./WorkspacePane";
 import { extractBlocks } from "./blocks";
 import { uid, useChatStore } from "./store";
+import { historyWithAttachments, type Attachment, type ImagePayload } from "@/lib/attachments";
 import { useChatSync } from "./use-chat-sync";
 import { createEventParser } from "@/lib/streaming/parse";
 import type { MaxxenEvent } from "@/lib/streaming/types";
@@ -532,7 +533,7 @@ function triggerMemoryExtract(
 
   /** Streams a completion into an existing (empty) assistant message. */
   const runCompletion = useCallback(
-    async (convId: string, assistantId: string, history: ApiMessage[], requestMode: ChatMode) => {
+    async (convId: string, assistantId: string, history: ApiMessage[], requestMode: ChatMode, images: ImagePayload[] = []) => {
       const controller = new AbortController();
       abortRef.current = controller;
       let acc = "";
@@ -564,6 +565,7 @@ function triggerMemoryExtract(
             timezone: readTimezonePref(),
             userLocation: readLocationPref(),
             search: readSearchPref(),
+            images: images.length ? images : undefined,
           }),
           signal: controller.signal,
         });
@@ -683,7 +685,7 @@ function triggerMemoryExtract(
    * and only execute after the user confirms (server enforces via ctx).
    */
   const runAgent = useCallback(
-    async (convId: string, assistantId: string, history: ApiMessage[]) => {
+    async (convId: string, assistantId: string, history: ApiMessage[], images: ImagePayload[] = []) => {
       const controller = new AbortController();
       abortRef.current = controller;
       const endpoint = endpointCredentials();
@@ -721,6 +723,7 @@ function triggerMemoryExtract(
             timezone: readTimezonePref(),
             userLocation: readLocationPref(),
             search: readSearchPref(),
+            images: images.length ? images : undefined,
           }),
           signal: controller.signal,
         });
@@ -882,9 +885,9 @@ function triggerMemoryExtract(
 
   /** Appends the user turn (naming the chat if it's the first) and streams a reply. */
   const sendMessage = useCallback(
-    async (raw: string, modeOverride?: ChatMode) => {
+    async (raw: string, modeOverride?: ChatMode, attachments: Attachment[] = []) => {
       const text = raw.trim();
-      if (!text) return;
+      if (!text && !attachments.length) return;
       const snapshot = useChatStore.getState();
       if (snapshot.streaming || abortRef.current) return;
       const requestMode: ChatMode = modeOverride ?? mode;
@@ -898,19 +901,22 @@ function triggerMemoryExtract(
       const stateNow = useChatStore.getState();
       const current = stateNow.conversations.find((c) => c.id === convId);
       const isFirstUserMessage = !current || !current.messages.some((m) => m.role === "user");
-      if (isFirstUserMessage) stateNow.renameChat(convId, text.slice(0, 42));
+      if (isFirstUserMessage && text) stateNow.renameChat(convId, text.slice(0, 42));
 
       stateNow.appendMessage(convId, {
         id: uid(),
         role: "user",
         content: text,
         createdAt: Date.now(),
+        ...(attachments.length ? { attachments } : {}),
       });
 
       // History includes the just-appended user message (before the assistant placeholder).
       const afterUser = useChatStore.getState();
       const fresh = afterUser.conversations.find((c) => c.id === convId);
       const history = toApiHistory(fresh ? fresh.messages : []);
+      const outgoing = historyWithAttachments(history, attachments);
+      const images = outgoing.images;
 
       const assistantId = uid();
       afterUser.appendMessage(convId, {
@@ -922,9 +928,9 @@ function triggerMemoryExtract(
       });
 
       if (requestMode === "agent") {
-        await runAgent(convId, assistantId, history);
+        await runAgent(convId, assistantId, outgoing.history, images);
       } else {
-        await runCompletion(convId, assistantId, history, requestMode);
+        await runCompletion(convId, assistantId, outgoing.history, requestMode, images);
       }
     },
     [runCompletion, runAgent, mode]
@@ -945,12 +951,14 @@ function triggerMemoryExtract(
       const idx = conv.messages.findIndex((m) => m.id === assistantMsg.id);
       if (idx < 0) return;
       const history = toApiHistory(conv.messages.slice(0, idx));
+      const retryUser = [...conv.messages.slice(0, idx)].reverse().find((m) => m.role === "user");
+      const rebuilt = historyWithAttachments(history, retryUser?.attachments ?? []);
       const retryMode = assistantMsg.mode ?? mode;
       snapshot.patchMessage(conv.id, assistantMsg.id, { failed: false, content: "", mode: retryMode });
       if (retryMode === "agent") {
-        await runAgent(conv.id, assistantMsg.id, history);
+        await runAgent(conv.id, assistantMsg.id, rebuilt.history, rebuilt.images);
       } else {
-        await runCompletion(conv.id, assistantMsg.id, history, retryMode);
+        await runCompletion(conv.id, assistantMsg.id, rebuilt.history, retryMode, rebuilt.images);
       }
     },
     [runCompletion, runAgent, mode]
