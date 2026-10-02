@@ -8,6 +8,7 @@ import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { AgentPhase, MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
+import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext, userMemories } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext, userMemories, timezone, userLocation, search } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
@@ -78,7 +79,24 @@ export async function POST(req: Request) {
   const email = typeof body?.userEmail === "string" ? body.userEmail.toLowerCase().trim() : undefined;
   const composioUserId =
     typeof body?.composioUserId === "string" && body.composioUserId.trim() ? body.composioUserId.trim() : undefined;
-  const ctx: Ctx = { githubToken, vercelToken, composioKey, userConfirmed, email, composioUserId };
+  const searchPref =
+    search && typeof search === "object"
+      ? {
+          enabled: (search as { enabled?: unknown }).enabled !== false,
+          maxResults: Math.min(10, Math.max(1, Math.floor(Number((search as { maxResults?: unknown }).maxResults) || 5))),
+        }
+      : undefined;
+  const ctx: Ctx = {
+    githubToken,
+    vercelToken,
+    composioKey,
+    userConfirmed,
+    email,
+    composioUserId,
+    timezone: typeof timezone === "string" ? timezone.slice(0, 60) : undefined,
+    userLocation: typeof userLocation === "string" ? userLocation.slice(0, 400) : undefined,
+    ...(searchPref ? { search: searchPref } : {}),
+  };
 
   // Maxxen runtime: capabilities probed live, tool registry filtered to what
   // is actually usable, one stable identity for every model.
@@ -104,6 +122,10 @@ export async function POST(req: Request) {
         const lastUserText =
           sanitizeMessages(messages).filter((m) => m.role === "user").pop()?.content ?? "";
         const userMemBlock = buildUserMemoryBlock(userMemories, lastUserText);
+        const timeLocBlock = buildRequestContext({
+          timezone: typeof timezone === "string" ? timezone : undefined,
+          userLocation: typeof userLocation === "string" ? userLocation : undefined,
+        });
         const history: any[] = [
           {
             role: "system",
@@ -114,6 +136,7 @@ export async function POST(req: Request) {
                 ? `\n\nProject configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
                 : "") +
               (userMemBlock ? `\n\n${userMemBlock}` : ""),
+              (typeof timeLocBlock === "string" && timeLocBlock ? `\n\n${timeLocBlock}` : ""),
           },
           ...budgeted(sanitizeMessages(messages)),
         ];
@@ -196,6 +219,7 @@ export async function POST(req: Request) {
             return;
           }
           history.push({ role: "assistant", content: text || null, tool_calls: calls });
+          let lastCallKey: string | null = null;
           for (const call of calls) {
             const def = runtime.tools.find((t) => t.id === call.function?.name);
             let args: Record<string, unknown> = {};
@@ -206,6 +230,13 @@ export async function POST(req: Request) {
               activity(`Skipped malformed args for “${call.function?.name}”`);
               continue;
             }
+            const callKey = duplicateCallKey(call.function?.name || "unknown", args);
+            if (callKey === lastCallKey) {
+              history.push({ role: "tool", tool_call_id: call.id, content: "That exact call just ran — use its result above instead of repeating it." });
+              activity(`Skipped repeat call to “${call.function?.name}”`);
+              continue;
+            }
+            lastCallKey = callKey;
             // Strip model-controlled authorization — only ctx.userConfirmed counts.
             if ("confirm" in args) delete (args as any).confirm;
             if (!def) {

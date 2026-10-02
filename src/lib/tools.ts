@@ -2,7 +2,8 @@ import { Octokit } from "octokit";
 import { assertSafeBaseURL } from "./net-guard";
 
 // MAXXEN tool registry — every entry has a REAL implementation below.
-// Kinds: project (user's GitHub), deploy (user's Vercel), composio (user's key).
+// Kinds: project (user's GitHub), deploy (user's Vercel), composio (user's key),
+// local (credential-free helpers: time, search, page reading — always available).
 // Permissions gate destructive/visible effects BEFORE execution:
 // - read: always allowed
 // - write: allowlisted paths only (builds/, chats/, settings.json)
@@ -15,13 +16,13 @@ export type Permission = "read" | "write" | "deploy" | "external";
 // userConfirmed must come from an explicit human gesture (UI "Confirm" button →
 // "Confirmed:" user message), NEVER from model-supplied tool args. The agent
 // loop strips args.confirm before execution — see app/api/agent/run.
-export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean; composioUserId?: string };
+export type Ctx = { githubToken?: string; vercelToken?: string; composioKey?: string; email?: string; userConfirmed?: boolean; composioUserId?: string; timezone?: string; userLocation?: string; search?: { enabled: boolean; maxResults: number } };
 
 export type ToolResult = { ok: boolean; summary: string; data?: unknown; error?: string; needsConfirm?: boolean };
 
 export type ToolDef = {
   id: string;
-  kind: "project" | "deploy" | "composio";
+  kind: "project" | "deploy" | "composio" | "local";
   permission: Permission;
   description: string;
   parameters: Record<string, unknown>; // JSON-schema-ish, human-readable
@@ -707,6 +708,76 @@ export const registry: ToolDef[] = [
       return { ok: true, summary: "Forgotten — that memory is deleted.", data: { id } };
     },
   },
+  {
+    id: "get_current_time",
+    kind: "local",
+    permission: "read",
+    description:
+      "Current date and time in any IANA timezone (e.g. Asia/Kolkata, America/New_York). The current UTC time is already in your context — call this only for a different timezone or a fresh timestamp. Completely free, no network.",
+    parameters: { timezone: "optional IANA timezone, e.g. Asia/Kolkata (default: the user's timezone, else UTC)" },
+    run: async (args, ctx) => {
+      const { isValidTimezone, formatInTimezone } = await import("./assistant-tools");
+      const raw = typeof args.timezone === "string" && args.timezone.trim() ? args.timezone.trim() : undefined;
+      const tz = raw ?? (typeof ctx.timezone === "string" && ctx.timezone ? ctx.timezone : "UTC");
+      if (!isValidTimezone(tz)) {
+        return { ok: false, summary: `Unknown timezone "${String(raw ?? tz).slice(0, 60)}" — use IANA names like Asia/Kolkata.` };
+      }
+      const l = formatInTimezone(new Date(), tz);
+      return {
+        ok: true,
+        summary: `${l.weekday} ${l.date}, ${l.time} (${l.timezone}) — ISO ${l.iso}.`,
+        data: { iso: l.iso, date: l.date, time: l.time, timezone: l.timezone, weekday: l.weekday },
+      };
+    },
+  },
+  {
+    id: "web_search",
+    kind: "local",
+    permission: "read",
+    description:
+      "Search the web for current or external facts (news, announcements, docs, prices, versions). Use ONLY when the answer needs information beyond stable knowledge — never for definitions or how-tos you already know. Returns real titles/URLs/snippets; cite only these URLs.",
+    parameters: {
+      query: "string, focused search query",
+      limit: "optional max results, default 5",
+    },
+    run: async (args, ctx) => {
+      if (ctx.search?.enabled === false)
+        return { ok: false, summary: "Web search is disabled in Settings → Tools & location." };
+      const query = typeof args.query === "string" ? args.query : "";
+      const limit =
+        typeof args.limit === "number"
+          ? Math.min(10, Math.max(1, Math.floor(args.limit)))
+          : (ctx.search?.maxResults ?? 5);
+      const { searchWeb, formatSearchResults } = await import("./assistant-tools");
+      const out = await searchWeb(query, { limit });
+      if ("error" in out) return { ok: false, summary: out.error };
+      if (!out.results.length)
+        return { ok: true, summary: `No results found for "${query.slice(0, 120)}".`, data: [] };
+      return {
+        ok: true,
+        summary: `Web results for "${query.slice(0, 120)}" (snippets, not page reads):\n${formatSearchResults(out.results)}`,
+        data: out.results,
+      };
+    },
+  },
+  {
+    id: "fetch_webpage",
+    kind: "local",
+    permission: "read",
+    description:
+      "Read one webpage (a user-supplied URL or a web_search result) as text. SSRF-guarded, no JavaScript, paywalls and non-HTML refused honestly. A search snippet is NOT a page read — call this before claiming page contents.",
+    parameters: { url: "string, http(s) URL to read" },
+    run: async (args, ctx) => {
+      void ctx;
+      const url = typeof args.url === "string" ? args.url : "";
+      if (!url.trim()) return { ok: false, summary: "Provide the page URL." };
+      const { fetchWebpage, formatPageResult } = await import("./assistant-tools");
+      const out = await fetchWebpage(url);
+      if ("error" in out) return { ok: false, summary: out.error };
+      const shown = { ...out, text: out.text.slice(0, 4000) };
+      return { ok: true, summary: formatPageResult(shown), data: { title: out.title, url: out.url, published: out.published } };
+    },
+  },
 ];
 
 export function describeForModel(): { name: string; description: string; parameters: Record<string, unknown> }[] {
@@ -842,6 +913,23 @@ const SCHEMAS: Record<string, unknown> = {
     type: "object",
     properties: { id: { type: "string", description: "Memory id from memory_recall" } },
     required: ["id"],
+  },
+  get_current_time: {
+    type: "object",
+    properties: { timezone: { type: "string", description: "IANA timezone, e.g. Asia/Kolkata" } },
+  },
+  web_search: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Focused search query" },
+      limit: { type: "number", description: "Max results, default 5" },
+    },
+    required: ["query"],
+  },
+  fetch_webpage: {
+    type: "object",
+    properties: { url: { type: "string", description: "http(s) URL to read" } },
+    required: ["url"],
   },
 };
 

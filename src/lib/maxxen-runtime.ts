@@ -75,9 +75,10 @@ rather than merely explaining how the user could perform the task.`;
 const has = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
 
 /** Tools in the static registry that need no credential to run usefully. */
-function toolNeeds(def: ToolDef): "github" | "vercel" | "composio" | null {
+function toolNeeds(def: ToolDef): "github" | "vercel" | "composio" | "local" | null {
   if (def.kind === "project") return "github";
   if (def.kind === "deploy") return "vercel";
+  if (def.kind === "local") return "local";
   return "composio";
 }
 
@@ -141,7 +142,13 @@ function capabilityBlock(caps: Capabilities, providerLabel: string): string {
   if (caps.composio.configured && caps.composio.reachable) {
     lines.push(`Connected toolkits: ${caps.composio.toolCount}`, "Additional tools available");
   }
-  lines.push("", `AI provider: ${providerLabel}`, "", "Credentials are managed by Maxxen's runtime.", "Never expose or request credentials.");
+  lines.push(
+    "",
+    "Assistant tools (always available, no keys needed): get_current_time (any IANA timezone), web_search (only when a search endpoint is configured server-side), fetch_webpage (guarded reader).",
+    "Use web_search only when the answer needs current/external facts; answer stable knowledge directly. Never invent citations — cite only returned URLs.",
+    "",
+    `AI provider: ${providerLabel}`, "", "Credentials are managed by Maxxen's runtime.", "Never expose or request credentials."
+  );
   lines.push(
     "",
     "Build→verify loop: after every deploy, run preview_check on the live URL before reporting success.",
@@ -174,6 +181,7 @@ export async function buildRuntime(
     const need = toolNeeds(def);
     if (need === "github") return capabilities.github.configured;
     if (need === "vercel") return capabilities.vercel.configured;
+    if (need === "local") return true;
     // Composio: key present is enough to attempt (per-tool errors stay honest);
     // reachability is reported in context, never assumed.
     return capabilities.composio.configured;

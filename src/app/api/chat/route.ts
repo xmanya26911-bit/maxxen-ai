@@ -9,6 +9,7 @@ import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
+import { buildRequestContext } from "@/lib/assistant-tools";
 
 /**
  * MAXXEN Chat — BYOK streaming endpoint.
@@ -53,6 +54,8 @@ export async function POST(req: Request) {
     model?: unknown;
     provider?: unknown;
     userMemories?: unknown;
+    timezone?: unknown;
+    userLocation?: unknown;
   } = {};
   try {
     body = await req.json();
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
 
-  const { messages, mode, apiKey, baseURL, model, provider, userMemories } = body;
+  const { messages, mode, apiKey, baseURL, model, provider, userMemories, timezone, userLocation } = body;
   const key = typeof apiKey === "string" ? apiKey : "";
   // Note: OpenCode always needs a key (its free tier rejects non-OpenCode
   // clients upstream); the adapter double-checks per model.
@@ -86,7 +89,11 @@ export async function POST(req: Request) {
     typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
   const lastUserText = [...clean].reverse().find((m) => m.role === "user")?.content ?? "";
   const userMemBlock = buildUserMemoryBlock(userMemories, lastUserText);
-  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}${userMemBlock ? `\n\n${userMemBlock}` : ""}`;
+  const timeLocBlock = buildRequestContext({
+    timezone: typeof timezone === "string" ? timezone : undefined,
+    userLocation: typeof userLocation === "string" ? userLocation : undefined,
+  });
+  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}${userMemBlock ? `\n\n${userMemBlock}` : ""}${timeLocBlock ? `\n\n${timeLocBlock}` : ""}`;
   const sized = budgeted(clean);
 
   let url: string;
