@@ -1,4 +1,5 @@
 import { anthropicCapabilities } from "../capabilities";
+import { withAnthropicImageParts } from "../../attachments";
 import {
   ProviderError,
   type CapabilityDescriptor,
@@ -56,7 +57,12 @@ export const anthropicAdapter: ProviderAdapter = {
           max_tokens: 4096,
           stream: true,
           system: request.system,
-          messages: request.messages,
+          messages: request.images?.length
+            ? withAnthropicImageParts(
+                request.messages.map((m) => ({ role: m.role, content: m.content })),
+                request.images
+              )
+            : request.messages,
         }),
         signal: request.signal,
       });

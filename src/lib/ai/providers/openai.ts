@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { withOpenAIImageParts } from "../../attachments";
 import { openAICompatibleCapabilities } from "../capabilities";
 import {
   ProviderError,
@@ -65,10 +66,18 @@ export const openaiAdapter: ProviderAdapter = {
     try {
       gen = (await client.chat.completions.create({
         model: request.model,
-        messages: [
-          ...(request.system ? [{ role: "system" as const, content: request.system }] : []),
-          ...request.messages,
-        ] as unknown as Parameters<typeof client.chat.completions.create>[0]["messages"],
+        messages: (request.images?.length
+          ? withOpenAIImageParts(
+              [
+                ...(request.system ? [{ role: "system" as const, content: request.system }] : []),
+                ...request.messages,
+              ],
+              request.images
+            )
+          : [
+              ...(request.system ? [{ role: "system" as const, content: request.system }] : []),
+              ...request.messages,
+            ]) as unknown as Parameters<typeof client.chat.completions.create>["messages"],
         temperature: request.temperature ?? 0.7,
         stream: true,
       })) as unknown as AsyncIterable<OpenAIDeltaChunk>;

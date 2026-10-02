@@ -48,6 +48,8 @@ export interface ModelRequest {
   model: string;
   system?: string;
   messages: ChatMsg[];
+  /** Vision payloads (served only by vision-capable adapters). */
+  images?: { name: string; dataUrl: string }[];
   temperature?: number;
   mode?: string;
   signal?: AbortSignal;
