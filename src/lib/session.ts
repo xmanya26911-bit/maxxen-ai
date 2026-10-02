@@ -43,3 +43,10 @@ export function verifySession(token: string): string | null {
     return null;
   }
 }
+
+
+/** Return the authenticated email from the signed MAXXEN session header. */
+export function sessionEmail(req: Request): string | null {
+  const token = req.headers.get("x-maxxen-session") || req.headers.get("authorization")?.replace(/^Bearer\\s+/i, "") || "";
+  return verifySession(token);
+}
