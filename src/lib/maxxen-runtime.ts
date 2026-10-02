@@ -129,7 +129,8 @@ function capabilityBlock(caps: Capabilities, providerLabel: string): string {
       "create repository",
       "create branches",
       "open pull requests",
-      "checkpoints"
+      "checkpoints",
+      "user memory (remember, recall, forget)"
     );
   }
   lines.push("", `Vercel: ${yn(caps.vercel.configured)}`);

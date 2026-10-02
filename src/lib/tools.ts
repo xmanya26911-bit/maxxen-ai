@@ -574,6 +574,139 @@ export const registry: ToolDef[] = [
       return { ok: true, summary: `“${slug}” executed.`, data: jb?.data ?? out.body };
     },
   },
+  {
+    id: "memory_save",
+    kind: "project",
+    permission: "write",
+    description:
+      "Remember a durable user detail (preference, fact, goal, project, profile) in the user's maxxen-data memory. Use when the user says 'remember' or 'save this', shares a stable preference, goal, or project fact, or asks you to note something for later. One sentence, no secrets — credential-like content is refused. Confirm-gated like other writes.",
+    parameters: {
+      content: "string, the memory in one sentence, e.g. the user's name is Manya",
+      category: "optional: preference|fact|goal|project|profile|important (default fact)",
+    },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const content = typeof args.content === "string" ? args.content.trim().slice(0, 500) : "";
+      if (!content) return { ok: false, summary: "Nothing to save — provide the memory content." };
+      const { scanForSecrets } = await import("./secret-scan");
+      if (scanForSecrets(content).length > 0)
+        return { ok: false, summary: "Refused: that looks like a credential — memories never store secrets." };
+      const { isMemoryCategory } = await import("./user-memory/types");
+      const category = isMemoryCategory(args.category) ? args.category : "fact";
+      if (ctx.userConfirmed !== true) {
+        return {
+          ok: false,
+          summary: `Ready to remember (${category}): "${content.slice(0, 140)}" — confirm to save it.`,
+          needsConfirm: true,
+          data: { content, category },
+        };
+      }
+      const { GitHubMemoryStore, octokitMemoryIO } = await import("./user-memory/store");
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
+      const r = await store.applyCandidates([{ content, category, importance: 0.85, confidence: 0.9 }]);
+      if (!r.created && !r.updated)
+        return { ok: true, summary: "Already remembered — no duplicate saved.", data: { created: 0, updated: 0 } };
+      return {
+        ok: true,
+        summary: r.created ? `Saved to ${category} memory.` : `Merged into existing ${category} memory (no duplicate).`,
+        data: { created: r.created, updated: r.updated },
+      };
+    },
+  },
+  {
+    id: "memory_recall",
+    kind: "project",
+    permission: "read",
+    description:
+      "Search the user's stored memories by topic. Use BEFORE answering when a personal preference, prior project, name, or goal might matter, and whenever the user asks what you remember about something. Read-only, never needs confirmation.",
+    parameters: {
+      query: "string, topic to search, e.g. the user's name",
+      limit: "optional number of memories, default 5, max 10",
+    },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const query = typeof args.query === "string" ? args.query.trim().slice(0, 300) : "";
+      if (!query) return { ok: false, summary: "Provide a search query." };
+      const n = typeof args.limit === "number" ? Math.min(10, Math.max(1, Math.floor(args.limit))) : 5;
+      const { GitHubMemoryStore, octokitMemoryIO } = await import("./user-memory/store");
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
+      const hits = await store.getRelevant(query, n);
+      if (!hits.length) return { ok: true, summary: "No stored memories match that topic.", data: [] };
+      const lines = hits.map((h) => `- [${h.memory.category}] ${h.memory.content} (id: ${h.memory.id})`);
+      return {
+        ok: true,
+        summary: `Recalled ${hits.length} ${hits.length === 1 ? "memory" : "memories"}:\n${lines.join("\n")}`,
+        data: hits.map((h) => ({ id: h.memory.id, category: h.memory.category, content: h.memory.content })),
+      };
+    },
+  },
+  {
+    id: "memory_update",
+    kind: "project",
+    permission: "write",
+    description:
+      "Edit a stored memory by id (recall first to find the id). Confirm-gated like other writes.",
+    parameters: {
+      id: "string, memory id from memory_recall",
+      content: "string, replacement text (one sentence, no secrets)",
+    },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const id = typeof args.id === "string" ? args.id.trim() : "";
+      const content = typeof args.content === "string" ? args.content.trim().slice(0, 500) : "";
+      if (!id || !content) return { ok: false, summary: "Provide the memory id and replacement text." };
+      const { scanForSecrets } = await import("./secret-scan");
+      if (scanForSecrets(content).length > 0)
+        return { ok: false, summary: "Refused: that looks like a credential — memories never store secrets." };
+      if (ctx.userConfirmed !== true) {
+        return {
+          ok: false,
+          summary: `Ready to update memory ${id} to: "${content.slice(0, 140)}" — confirm to apply it.`,
+          needsConfirm: true,
+          data: { id, content },
+        };
+      }
+      const { GitHubMemoryStore, octokitMemoryIO } = await import("./user-memory/store");
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
+      const updated = await store.update(id, { content });
+      if (!updated) return { ok: false, summary: `No memory with id ${id} — recall first to find it.` };
+      return { ok: true, summary: `Memory updated: "${updated.content.slice(0, 140)}"`, data: { id } };
+    },
+  },
+  {
+    id: "memory_delete",
+    kind: "project",
+    permission: "write",
+    description:
+      "Delete a stored memory by id. Use when the user says 'forget X' (recall first to find the id). Confirm-gated like other writes.",
+    parameters: { id: "string, memory id from memory_recall" },
+    run: async (args, ctx) => {
+      const token = needGithub(ctx.githubToken);
+      const id = typeof args.id === "string" ? args.id.trim() : "";
+      if (!id) return { ok: false, summary: "Provide the memory id (recall first to find it)." };
+      if (ctx.userConfirmed !== true) {
+        return {
+          ok: false,
+          summary: `Ready to forget memory ${id} — confirm to delete it.`,
+          needsConfirm: true,
+          data: { id },
+        };
+      }
+      const { GitHubMemoryStore, octokitMemoryIO } = await import("./user-memory/store");
+      const oct = new Octokit({ auth: token });
+      const { data: me } = await oct.rest.users.getAuthenticated();
+      const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
+      const gone = await store.delete(id);
+      if (!gone) return { ok: false, summary: `No memory with id ${id} — recall first to find it.` };
+      return { ok: true, summary: "Forgotten — that memory is deleted.", data: { id } };
+    },
+  },
 ];
 
 export function describeForModel(): { name: string; description: string; parameters: Record<string, unknown> }[] {
@@ -680,6 +813,35 @@ const SCHEMAS: Record<string, unknown> = {
       confirm: { type: "boolean", description: "Required true for world-changing calls" },
     },
     required: ["tool", "params"],
+  },
+  memory_save: {
+    type: "object",
+    properties: {
+      content: { type: "string", description: "The memory in one sentence" },
+      category: { type: "string", description: "preference|fact|goal|project|profile|important" },
+    },
+    required: ["content"],
+  },
+  memory_recall: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Topic to search" },
+      limit: { type: "string", description: "Max memories, default 5" },
+    },
+    required: ["query"],
+  },
+  memory_update: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "Memory id from memory_recall" },
+      content: { type: "string", description: "Replacement text" },
+    },
+    required: ["id", "content"],
+  },
+  memory_delete: {
+    type: "object",
+    properties: { id: { type: "string", description: "Memory id from memory_recall" } },
+    required: ["id"],
   },
 };
 
