@@ -65,10 +65,14 @@ export async function getLinkedGithubToken(email: string): Promise<string | null
   return typeof encrypted === "string" ? decrypt(encrypted) : null;
 }
 
-export async function linkGithubToken(email: string, token: string): Promise<void> {
+export async function linkGithubToken(email: string, token: string, replace = false): Promise<void> {
   const normalized = email.trim().toLowerCase();
   const clean = token.trim();
   if (!clean || clean.length > 500) throw new Error("Invalid GitHub token.");
+  if (!replace) {
+    const existing = await getLinkedGithubToken(normalized);
+    if (existing) return;
+  }
   await supabase(TABLE, {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
