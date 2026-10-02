@@ -11,6 +11,7 @@ import Sidebar from "./Sidebar";
 import WorkspacePane from "./WorkspacePane";
 import { extractBlocks } from "./blocks";
 import { uid, useChatStore } from "./store";
+import { useChatSync } from "./use-chat-sync";
 import { createEventParser } from "@/lib/streaming/parse";
 import type { MaxxenEvent } from "@/lib/streaming/types";
 
@@ -464,6 +465,8 @@ function triggerMemoryExtract(
     /* never break chat */
   }
 }
+
+  useChatSync();
 
   // Pull this conversation's project memory into the local mirror so the
   // next agent run carries it (best-effort; cached copy applies meanwhile).

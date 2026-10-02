@@ -1,13 +1,15 @@
 "use client";
 
-import { memo, useMemo, useSyncExternalStore } from "react";
+import { memo, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowUpRight, KeyRound, LogOut, MessageSquareDashed, Plus, Settings2, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, KeyRound, LogOut, MessageSquareDashed, Pencil, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
 import { useChatStore, type Conversation } from "./store";
+import { searchConversations } from "@/lib/chat-sync";
+import { syncDeleteConv, syncRenameConv } from "./use-chat-sync";
 
 /** "Just now" / "2m ago" / "3h ago" / locale date — mirrors the real app's timeAgo. */
 function timeAgo(timestamp: number): string {
@@ -57,6 +59,10 @@ function SidebarImpl({ onNavigate, className }: SidebarProps) {
   const activeId = useChatStore((s) => s.activeId);
   const setActive = useChatStore((s) => s.setActive);
   const deleteChat = useChatStore((s) => s.deleteChat);
+  const renameChat = useChatStore((s) => s.renameChat);
+  const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
 
   const session = useAuthStore((s) => s.session);
   const signOut = useAuthStore((s) => s.signOut);
@@ -65,12 +71,12 @@ function SidebarImpl({ onNavigate, className }: SidebarProps) {
 
   /** Newest-first list grouped into the four time buckets (empty groups skipped). */
   const groups = useMemo(() => {
-    const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
+    const sorted = [...searchConversations(conversations, query)].sort((a, b) => b.updatedAt - a.updatedAt);
     return GROUP_LABELS.map((label) => ({
       label,
       items: sorted.filter((c) => bucketOf(c.updatedAt) === label),
     })).filter((g) => g.items.length > 0);
-  }, [conversations]);
+  }, [conversations, query]);
 
   const handleNewChat = () => {
     const { conversations: current, activeId: currentId, newChat } = useChatStore.getState();
@@ -100,9 +106,31 @@ function SidebarImpl({ onNavigate, className }: SidebarProps) {
           aria-current={active ? "true" : undefined}
           className="mx-focus min-w-0 flex-1 cursor-pointer px-3 py-2 text-left"
         >
-          <span className={cn("block truncate text-[13px]", active ? "text-white" : "text-white/75")}>
-            {conv.title}
-          </span>
+          {editingId === conv.id ? (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => setEditingId(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const t = draft.trim().slice(0, 140);
+                  if (t && t !== conv.title) {
+                    renameChat(conv.id, t);
+                    void syncRenameConv(conv.id);
+                  }
+                  setEditingId(null);
+                } else if (e.key === "Escape") setEditingId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Rename conversation"
+              className="mx-focus block w-full truncate rounded bg-white/10 px-1 py-0.5 text-[13px] text-white outline-none"
+            />
+          ) : (
+            <span className={cn("block truncate text-[13px]", active ? "text-white" : "text-white/75")}>
+              {conv.title}
+            </span>
+          )}
           <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
             {timeAgo(conv.updatedAt)}
           </span>
@@ -111,7 +139,20 @@ function SidebarImpl({ onNavigate, className }: SidebarProps) {
           type="button"
           onClick={(e) => {
             e.stopPropagation();
+            setEditingId(conv.id);
+            setDraft(conv.title);
+          }}
+          aria-label={`Rename conversation: ${conv.title}`}
+          className="mx-focus mx-press mr-1 shrink-0 rounded-md p-2 text-muted-foreground opacity-100 transition-all hover:bg-white/[0.08] hover:text-white lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
+        >
+          <Pencil size={13} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
             deleteChat(conv.id);
+            void syncDeleteConv(conv.id);
           }}
           aria-label={`Delete conversation: ${conv.title}`}
           className="mx-focus mx-press mr-1.5 shrink-0 rounded-md p-2 text-muted-foreground opacity-100 transition-all hover:bg-white/[0.08] hover:text-white lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
@@ -151,6 +192,21 @@ function SidebarImpl({ onNavigate, className }: SidebarProps) {
         </motion.button>
       </div>
 
+      {conversations.length > 0 && (
+        <div className="px-3 pb-1">
+          <div className="relative">
+            <Search size={13} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search conversations…"
+              aria-label="Search conversations"
+              autoComplete="off"
+              className="mx-focus w-full rounded-lg border border-white/10 bg-white/[0.03] py-2 pl-8 pr-3 text-[12.5px] text-white outline-none transition-colors placeholder:text-white/30 focus:border-white/25"
+            />
+          </div>
+        </div>
+      )}
       {/* Conversations — grouped by recency */}
       <nav
         aria-label="Conversations"

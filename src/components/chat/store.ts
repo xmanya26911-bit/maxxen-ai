@@ -36,6 +36,8 @@ export interface ChatState {
   deleteChat: (id: string) => void;
   /** Sets a conversation title (used to name a thread after its first user message). */
   renameChat: (convId: string, title: string) => void;
+  /** Inserts a conversation (remote stub or full load), replacing any same-id thread. */
+  importConversation: (conv: Conversation) => void;
   /** Appends a message to a conversation and bumps its updatedAt (trims oldest pairs). */
   appendMessage: (convId: string, msg: Message) => void;
   /** Shallow-patches a single message (streaming content, failure flag…). */
@@ -121,6 +123,15 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           conversations: s.conversations.map((c) => (c.id === convId ? { ...c, title } : c)),
         })),
+
+      importConversation: (conv) =>
+        set((s) => {
+          const exists = s.conversations.some((c) => c.id === conv.id);
+          const conversations = exists
+            ? s.conversations.map((c) => (c.id === conv.id ? conv : c))
+            : [conv, ...s.conversations];
+          return { conversations };
+        }),
 
       appendMessage: (convId, msg) =>
         set((s) => ({
