@@ -10,6 +10,7 @@
  */
 
 import type { Source } from "./citations";
+import { MAX_SYNC_TEXT_BYTES } from "./attachments";
 
 export const CHATS_DIR = "chats";
 export const CHAT_INDEX_PATH = "chats/_index.json";
