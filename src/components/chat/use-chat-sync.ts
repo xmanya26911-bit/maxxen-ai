@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useChatStore } from "./store";
+import { useAuthStore } from "@/lib/auth-store";
 import {
   CHAT_INDEX_PATH,
   chatFilePath,
@@ -13,7 +14,10 @@ import {
 } from "@/lib/chat-sync";
 
 async function postJSON(path: string, body: unknown): Promise<any> {
-  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const session = useAuthStore.getState().session?.token || "";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (session) headers["x-maxxen-session"] = session;
+  const r = await fetch(path, { method: "POST", headers, body: JSON.stringify(body) });
   return r.json().catch(() => ({}));
 }
 
@@ -47,9 +51,9 @@ function parseIndex(text: unknown): ConversationIndexEntry[] {
 export async function persistConversation(id: string): Promise<void> {
   try {
     const t = token();
-    if (!t) return;
     const conv = useChatStore.getState().conversations.find((c) => c.id === id);
     if (!conv || !conv.messages.length) return;
+    if (!t && !useAuthStore.getState().session?.token) return;
     const file = toConversationFile(conv);
     const saved = await postJSON("/api/github/save", {
       githubToken: t,
@@ -107,8 +111,13 @@ export function useChatSync(): void {
     loadedRef.current = true;
     (async () => {
       try {
-        const t = token();
-        if (!t) return;
+            const t = token();
+        if (t) {
+          // One-time migration: bind an existing device-local GitHub token to
+          // the verified MAXXEN account so other devices can reuse it.
+          await postJSON("/api/account/github", { githubToken: t });
+        }
+        if (!t && !useAuthStore.getState().session?.token) return;
         const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
         const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
         if (!entries.length) return;
@@ -157,7 +166,7 @@ export function useChatSync(): void {
     (async () => {
       try {
         const t = token();
-        if (!t) return;
+        if (!t && !useAuthStore.getState().session?.token) return;
         const j = await postJSON("/api/github/file", { githubToken: t, path: chatFilePath(activeId) });
         const raw = typeof j?.text === "string" ? j.text : "";
         const file = raw ? JSON.parse(raw) : null;
