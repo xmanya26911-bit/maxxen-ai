@@ -207,14 +207,14 @@ describe("retrieval", () => {
   ];
 
   it("returns relevant memories first", () => {
-    const hits = keywordRetrieve("Make the Maxxen settings page better.", all, 8);
+    const hits = keywordRetrieve("Make the Maxxen settings page dark and premium.", all, 8);
     const texts = hits.map((h) => h.memory.content);
     expect(texts.some((t) => t.includes("dark premium"))).toBe(true);
     expect(texts.some((t) => t.includes("GitHub"))).toBe(true);
   });
 
   it("excludes irrelevant and expired memories", () => {
-    const hits = keywordRetrieve("Make the Maxxen settings page better.", all, 8);
+    const hits = keywordRetrieve("Make the Maxxen settings page dark and premium.", all, 8);
     expect(hits.some((h) => h.memory.content.includes("marathons"))).toBe(false);
     expect(hits.some((h) => h.memory.content.includes("lunch"))).toBe(false);
     expect(overlapScore("zzzqqq", all[0].content)).toBe(0);

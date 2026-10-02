@@ -19,7 +19,7 @@ export interface MemoryRetriever {
 }
 
 const STOPWORDS =
-  "a,an,the,and,or,but,is,are,was,were,be,to,of,in,on,for,with,do,does,did,i,you,he,she,it,we,they,my,your,his,her,its,our,their,me,him,us,them,what,when,where,which,who,how,can,could,should,would,will,just,very,so,than,too,about,into,over,after,please,thanks,thank,hello,hi,hey,ok,yes,no,not,at,by,from,as,also,make,made,using,use,used,get,got,let,like,want,need,know,think,see,look,show,tell,give,take,come,go,better,best,new,own,page,app,ai,maxxen";
+  "a,an,the,and,or,but,is,are,was,were,be,to,of,in,on,for,with,do,does,did,i,you,he,she,it,we,they,my,your,his,her,its,our,their,me,him,us,them,what,when,where,which,who,how,can,could,should,would,will,just,very,so,than,too,about,into,over,after,please,thanks,thank,hello,hi,hey,ok,yes,no,not,at,by,from,as,also,make,made,using,use,used,get,got,let,like,want,need,know,think,see,look,show,tell,give,take,come,go,better,new,own,app,ai,maxxen";
 const STOP = new Set(STOPWORDS.split(","));
 
 export function tokens(text: string): string[] {

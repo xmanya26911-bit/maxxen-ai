@@ -6,7 +6,7 @@ import { overlapScore } from "./relevance";
  *
  * Rules (deterministic, no model call):
  * - identical normalized content          → IGNORE
- * - high overlap (>=0.6), same category   → MERGE (keep the richer text)
+ * - high overlap (>=0.45), same category   → MERGE (keep the richer text)
  * - medium overlap (>=0.35), same category → UPDATE (candidate supersedes)
  * - otherwise                              → CREATE
  * - DELETE is never automatic (except expiry purge); only explicit UI deletes.
@@ -15,7 +15,7 @@ import { overlapScore } from "./relevance";
  * confidence, a fresh updatedAt, and preserves the original id + createdAt.
  */
 
-export const MERGE_THRESHOLD = 0.6;
+export const MERGE_THRESHOLD = 0.45;
 export const UPDATE_THRESHOLD = 0.35;
 
 export function normalize(content: string): string {
