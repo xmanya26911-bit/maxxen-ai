@@ -137,6 +137,34 @@ export function verifyGithubOAuthState(state: string): { email: string; nonce: s
   } catch { return null; }
 }
 
+
+export async function getUsableGithubToken(email: string): Promise<string | null> {
+  const oauth = await getLinkedGithubOAuth(email);
+  if (!oauth) return getLinkedGithubToken(email);
+  if (!oauth.accessExpiresAt || oauth.accessExpiresAt > Date.now() + 60_000) return oauth.accessToken;
+  if (!oauth.refreshToken) return oauth.accessToken;
+  const clientId = process.env.GITHUB_APP_CLIENT_ID || "";
+  const clientSecret = process.env.GITHUB_APP_CLIENT_SECRET || "";
+  if (!clientId || !clientSecret) return oauth.accessToken;
+  try {
+    const res = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "refresh_token", refresh_token: oauth.refreshToken }),
+    });
+    const token = await res.json().catch(() => ({}));
+    if (!res.ok || typeof token.access_token !== "string") return oauth.accessToken;
+    await linkGithubOAuth(email, {
+      accessToken: token.access_token,
+      refreshToken: typeof token.refresh_token === "string" ? token.refresh_token : oauth.refreshToken,
+      accessExpiresAt: typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1000 : undefined,
+      githubId: oauth.githubId,
+      login: oauth.login,
+    });
+    return token.access_token;
+  } catch { return oauth.accessToken; }
+}
+
 export async function unlinkGithubToken(email: string): Promise<void> {
   await supabase(`${TABLE}?email=eq.${encodeURIComponent(email.toLowerCase())}`, { method: "DELETE" });
 }
