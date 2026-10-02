@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     const clean = sanitizeMemory(memory);
     const body = JSON.stringify({ ...clean, updatedAt: new Date().toISOString() }, null, 2);
     if (body.length > 20000) return NextResponse.json({ error: "Memory too large (20KB max)." }, { status: 413 });
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const path = `memory/${pid}.json`;
     let sha: string | undefined;
