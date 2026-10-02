@@ -7,6 +7,25 @@ never confers model access (see below).
 > **`.opencode/` provides project configuration/context. It does not grant
 > access to OpenCode-hosted models.**
 
+## Free-tier restriction (upstream gate, 2026-09-16)
+
+Since 2026-09-16 OpenCode rejects free-tier calls from outside the official
+OpenCode client: `403 {"error":{"type":"FreeTierError","message":"OpenCode's
+free tier can only be used from within OpenCode"}}` — even with a valid
+account key (anomalyco/opencode#49433, #49596, #49609; the gate reads the
+client identity, which third parties cannot legitimately present).
+Faking the client to dodge the gate would be impersonation, so Maxxen does
+not attempt it. Consequences in Maxxen:
+
+- **Every OpenCode model requires the caller's own OpenCode key** (paid
+  models). Keyless calls fail closed before any request is sent.
+- The Settings model browser was removed: it advertised free models Maxxen
+  cannot serve. Type the paid model ID manually.
+- A 403 carrying `FreeTierError` is surfaced verbatim in meaning: "free
+  tier only works inside the official OpenCode app".
+- If upstream re-opens free access, relax `modelNeedsKey` in
+  `opencode-catalog.ts` (it is a function for exactly this reason).
+
 ## Endpoints used
 
 Base: `https://opencode.ai` (pinned server-side; a client-supplied baseURL can
@@ -39,7 +58,7 @@ free/paid flags, no family field, no capabilities. Enrichment
   `openai-chat` otherwise.
 - Capabilities are honest family-level facts only (`chat`, `streaming`).
 
-Discovery behavior (`GET /api/opencode/models` → Settings picker):
+Discovery behavior (`GET /api/opencode/models`):
 
 1. Fetch live catalog (15s timeout), cache 1h.
 2. One retry on 429/5xx, then serve stale cache if present.
@@ -47,29 +66,23 @@ Discovery behavior (`GET /api/opencode/models` → Settings picker):
    and label the response `"fallback"` so the UI never silently claims
    freshness. Refresh the fallback list whenever the docs change.
 
-The picker therefore tracks OpenCode additions/removals with no release, and
-a paid model can never be served under a "Free" label: `authRequired` comes
-from the same predicate that gates the request.
+`authRequired` is currently true for every model (see restriction above);
+the `free` label remains informational only and is never used to skip auth.
 
 ## Authentication
 
-Per the inference guide: **"Free chat models can be called without [an auth]
-header. Paid models require it."**
-
-- Free model selected → Maxxen sends **no** `Authorization` header and does
-  not ask for a key (Settings shows the key field as optional).
-- Paid model selected → the request carries the caller's own OpenCode key
-  (`Bearer`, from Maxxen Settings → vault). Selecting a paid model with no
-  key fails closed client-side *and* server-side before any request is sent.
+- **Every OpenCode model needs the caller's own key** (`Bearer`, from
+  Maxxen Settings → vault). No key → fail closed, no request sent.
 - Maxxen never reads OpenCode credentials from anywhere else: no local
   credential stores, no session cookies, no installed-app databases, no
-  fabricated keys. Only keys the user pasted into Maxxen are ever used.
+  fabricated keys, no client spoofing. Only keys the user pasted into
+  Maxxen are ever used.
 
 ## Architecture
 
 ```
-Client (Settings picker / ChatShell)
-  ↓  { provider: "opencode", model, apiKey? }   (key omitted for free models)
+Client (Settings / ChatShell)
+  ↓  { provider: "opencode", model, apiKey }   (key always required)
 POST /api/chat  →  adapterFor("opencode")  →  opencodeAdapter.complete()
   ↓ ModelEvents (delta/error/done)
 canonical MaxxenEvents (lib/streaming)  →  browser renders only text + metadata
@@ -78,23 +91,20 @@ canonical MaxxenEvents (lib/streaming)  →  browser renders only text + metadat
 - `src/lib/ai/providers/opencode-catalog.ts` — isomorphic: discovery, cache,
   family/free predicates, error normalizer. No SDKs, no secrets.
 - `src/lib/ai/providers/opencode.ts` — server-only `ProviderAdapter`:
-  pins endpoints, attaches the caller key only when required, forwards true
+  pins endpoints, attaches the caller key on every call, forwards true
   SSE per family, enforces timeout (60s), honors cancellation, maps
   401/403/404/429/5xx to user-safe `ProviderError`s.
 - Registered like every provider: `ProviderId` (`ai/types`) →
   `PROVIDERS` metadata (`ai/providers/registry`) → `ADAPTERS`
   (`ai/providers/adapters`). `endpoint.ts`, Settings tabs, and the vault key
   slot (`maxxen_apikey_opencode`) follow automatically.
-- `/api/chat` resolves `provider: "opencode"` to the adapter and permits an
-  empty key (the adapter itself enforces paid-model auth). All other
-  providers are untouched.
+- `/api/chat` requires a key for every provider including OpenCode; the
+  adapter enforces it again per model. All other providers are untouched.
 - Agent loop: OpenCode chat-family models can drive tools (capability
-  `toolCalling: true`, like every OpenAI-compatible endpoint). Responses /
-  Anthropic / Gemini families report `toolCalling: false`, and the agent
-  route additionally requires the chat family for OpenCode. Keyless agent
-  runs are refused with an explicit message (the agent SDK client cannot omit
-  the auth header, so free-keyless agent use stays a documented limitation —
-  free chat works in `/chat`).
+  `toolCalling: true`, like every OpenAI-compatible endpoint), with the
+  caller key mandatory. Responses / Anthropic / Gemini families report
+  `toolCalling: false`, and the agent route additionally requires the chat
+  family for OpenCode.
 
 ## `.opencode/` project support
 
@@ -116,7 +126,7 @@ canonical MaxxenEvents (lib/streaming)  →  browser renders only text + metadat
 
 1. If the id follows the documented naming/family conventions, nothing is
    needed — discovery picks it up.
-2. New family (e.g. a new Zen endpoint kind): add the URL + a
+2. New family (e.g. a new Zen endpoint kind): add the URL +
    starter/extractor in `opencode.ts`, extend `familyForModelId` +
    `OpenCodeApiFamily`, update the Zen-table reference in the catalog header.
 3. New free ids while the catalog lacks flags: extend `FALLBACK_FREE_IDS`
@@ -127,11 +137,12 @@ canonical MaxxenEvents (lib/streaming)  →  browser renders only text + metadat
 ## Security decisions (summary)
 
 - Documented endpoints only; fixed origin (no client redirect).
-- Caller key only, header only when required; free calls are headerless.
-- Paid-without-key fails closed in two layers (client gate + adapter throw).
-- No credential harvesting of any kind; no subscription/rate-limit bypass
-  (429s surface as retryable user errors; catalog retries once, then backs
-  off to cache/fallback).
+- Caller key on every call; no anonymous requests of any kind.
+- Missing key fails closed in two layers (route gate + adapter throw).
+- No credential harvesting of any kind; no client impersonation to dodge
+  the free-tier gate; no subscription/rate-limit bypass (429s surface as
+  retryable user errors; catalog retries once, then backs off to
+  cache/fallback).
 - Upstream bodies are truncated to 300 chars for messages; headers and keys
   never enter errors or logs.
 - Project-context reads are allowlisted, capped, self-only repos, never

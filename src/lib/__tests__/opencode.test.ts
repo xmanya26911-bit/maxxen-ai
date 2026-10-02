@@ -30,6 +30,10 @@ import {
  * /v1/models, OpenAI/Responses/Anthropic/Gemini SSE). The adapter and catalog
  * modules pin the https origin; tests route them into the mock, so every
  * byte the provider sends and receives is asserted in-process.
+ *
+ * Upstream reality (2026-09-16): OpenCode rejects free-tier calls from
+ * outside the official client (403 FreeTierError), so Maxxen requires the
+ * caller's own key for EVERY OpenCode model — the suite asserts exactly that.
  */
 
 const LIVE_MODELS = {
@@ -67,6 +71,8 @@ const mockFetch = (async (url: unknown, init?: RequestInit) => {
   const j = JSON.parse(String(init?.body || "{}")) as { model?: string };
   if (j.model === "err-401") return new Response("bad key", { status: 401 });
   if (j.model === "err-429") return new Response("slow down", { status: 429 });
+  if (j.model === "err-freetier")
+    return new Response('{"type":"error","error":{"type":"FreeTierError","message":"OpenCode\u2019s free tier can only be used from within OpenCode"}}', { status: 403 });
   if (path === "/inference/openai/v1/chat/completions") {
     seenAuth.push(auth);
     return new Response(
@@ -158,12 +164,16 @@ describe("model discovery", () => {
     expect(() => parseCatalog(null)).toThrow(/malformed/);
   });
 
-  it("free detection: -free suffix plus documented ids", () => {
+  it("free labels still come from suffix plus documented ids", () => {
     expect(isFreeModelId("ling-3.0-tiny-free")).toBe(true);
     expect(isFreeModelId("big-pickle")).toBe(true);
     expect(isFreeModelId("kimi-k2.6")).toBe(false);
+  });
+
+  it("every model needs a key (upstream free-tier gate)", () => {
     expect(modelNeedsKey("kimi-k2.6")).toBe(true);
-    expect(modelNeedsKey("space-bunny-free")).toBe(false);
+    expect(modelNeedsKey("space-bunny-free")).toBe(true);
+    expect(modelNeedsKey("mimo-v2.5-free")).toBe(true);
   });
 
   it("fallback catalog never claims a paid model is free", () => {
@@ -199,7 +209,7 @@ describe("API-family routing", () => {
     }) as typeof fetch;
     try {
       await expect(
-        opencodeAdapter.complete({ apiKey: "", baseURL: "x", model: "jev-1.13-free", messages: [] })
+        opencodeAdapter.complete({ apiKey: "oc_k", baseURL: "x", model: "jev-1.13-free", messages: [] })
       ).rejects.toThrow(/no documented streaming API/);
       expect(fetched).toBe(false);
     } finally {
@@ -209,19 +219,19 @@ describe("API-family routing", () => {
 });
 
 describe("streaming through a mocked OpenCode server", () => {
-  it("streams chat deltas with NO auth header for free keyless calls", async () => {
+  it("streams chat deltas always carrying the caller Bearer key", async () => {
     seenAuth.length = 0;
     const events = await collect(
       await opencodeAdapter.complete({
-        apiKey: "",
+        apiKey: "oc_user_key",
         baseURL: "https://evil.example/v1",
         model: "mimo-v2.5-free",
         system: "sys",
         messages: [{ role: "user", content: "hi" }],
       })
     );
-    // Client baseURL is ignored (endpoints are pinned); free calls send no key.
-    expect(seenAuth).toEqual([null]);
+    // Client baseURL is ignored (endpoints are pinned); every call is keyed.
+    expect(seenAuth).toEqual(["Bearer oc_user_key"]);
     expect(events.filter((e) => e.type === "delta").map((e) => e.text)).toEqual(["Hel", "lo"]);
     expect(events.at(-1)).toMatchObject({ type: "done" });
   });
@@ -239,12 +249,6 @@ describe("streaming through a mocked OpenCode server", () => {
       await opencodeAdapter.complete({ apiKey: "oc_k", baseURL: "x", model: "gemini-3-flash", messages: [] })
     );
     expect(g.map((e) => (e as { text?: string }).text ?? e.type)).toContain("G1");
-  });
-
-  it("sends the caller's Bearer key for paid models", async () => {
-    seenAuth.length = 0;
-    await collect(await opencodeAdapter.complete({ apiKey: "oc_secret", baseURL: "x", model: "kimi-k2.6", messages: [] }));
-    expect(seenAuth.at(-1)).toBe("Bearer oc_secret");
   });
 
   it("cancellation aborts mid-stream and ends silently", async () => {
@@ -269,7 +273,7 @@ describe("streaming through a mocked OpenCode server", () => {
     try {
       const events = await collect(
         await opencodeAdapter.complete({
-          apiKey: "",
+          apiKey: "oc_k",
           baseURL: "x",
           model: "mimo-v2.5-free",
           messages: [],
@@ -296,21 +300,41 @@ describe("authentication behavior", () => {
       // The fail-closed check runs before any network access by construction.
       await expect(
         opencodeAdapter.complete({ apiKey: "   ", baseURL: "x", model: "kimi-k2.6", messages: [] })
-      ).rejects.toThrow(/requires authentication/);
+      ).rejects.toThrow(/needs your own API key/);
       expect(fetched).toBe(false);
     } finally {
       globalThis.fetch = realFetch;
     }
   });
 
-  it("maps 401/429/503 to user-safe errors", async () => {
+  it("free model without key ALSO fails closed (upstream gate)", async () => {
+    const realFetch = globalThis.fetch;
+    let fetched = false;
+    globalThis.fetch = (async () => {
+      fetched = true;
+      return new Response("", { status: 500 });
+    }) as typeof fetch;
+    try {
+      await expect(
+        opencodeAdapter.complete({ apiKey: "", baseURL: "x", model: "mimo-v2.5-free", messages: [] })
+      ).rejects.toThrow(/free tier only works inside/);
+      expect(fetched).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("maps 401/403/429/503 to user-safe errors", async () => {
     await expect(
       opencodeAdapter.complete({ apiKey: "oc_k", baseURL: "x", model: "err-401", messages: [] })
     ).rejects.toThrow(/rejected the key/);
+    await expect(
+      opencodeAdapter.complete({ apiKey: "oc_k", baseURL: "x", model: "err-freetier", messages: [] })
+    ).rejects.toThrow(/free tier only works inside/);
     expect(normalizeUpstreamError(429, "").message).toMatch(/rate limit/);
     expect(normalizeUpstreamError(503, "").message).toMatch(/temporarily unavailable/);
     expect(normalizeUpstreamError(404, "").message).toMatch(/no such model/);
-    expect(normalizeUpstreamError(403, "").message).toMatch(/refused/);
+    expect(normalizeUpstreamError(403, "nope").message).toMatch(/refused/);
     const n = normalizeUpstreamError(500, "x".repeat(500));
     expect(n.message.length).toBeLessThan(400);
     expect(n.retryable).toBe(true);
