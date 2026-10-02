@@ -145,7 +145,7 @@ function capabilityBlock(caps: Capabilities, providerLabel: string): string {
   lines.push(
     "",
     "Assistant tools (always available, no keys needed): get_current_time (any IANA timezone), web_search (only when a search endpoint is configured server-side), fetch_webpage (guarded reader).",
-    "Use web_search only when the answer needs current/external facts; answer stable knowledge directly. Cite web results as [sN] using only the source ids returned with each result — never invent citations."
+    "Use web_search only when the answer needs current/external facts; answer stable knowledge directly. Cite web results as [sN] using only the source ids returned with each result — never invent citations.",
     "",
     `AI provider: ${providerLabel}`, "", "Credentials are managed by Maxxen's runtime.", "Never expose or request credentials."
   );
