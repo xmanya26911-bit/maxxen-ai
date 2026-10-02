@@ -113,10 +113,32 @@ export function useChatSync(): void {
         const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
         if (!entries.length) return;
         const state = useChatStore.getState();
-        const have = new Set(state.conversations.map((c) => c.id));
+        const localById = new Map(state.conversations.map((c) => [c.id, c]));
+        // The remote index is the cross-device catalog. Keep local-only chats,
+        // but never let an older local snapshot hide a newer cloud snapshot.
         for (const e of entries) {
-          if (have.has(e.id)) continue;
-          state.importConversation({ id: e.id, title: e.title, createdAt: e.updatedAt, updatedAt: e.updatedAt, messages: [] });
+          const local = localById.get(e.id);
+          if (!local) {
+            state.importConversation({
+              id: e.id,
+              title: e.title,
+              createdAt: e.updatedAt,
+              updatedAt: e.updatedAt,
+              messages: [],
+            });
+            continue;
+          }
+          if (e.updatedAt > local.updatedAt) {
+            // Mark it as a remote stub so the lazy loader below fetches the
+            // complete conversation instead of treating stale local messages
+            // as authoritative.
+            state.importConversation({
+              ...local,
+              title: e.title,
+              updatedAt: e.updatedAt,
+              messages: [],
+            });
+          }
         }
       } catch {
         /* ignore */
@@ -128,7 +150,10 @@ export function useChatSync(): void {
   useEffect(() => {
     if (!activeId) return;
     const conv = useChatStore.getState().conversations.find((c) => c.id === activeId);
-    if (!conv || conv.messages.length > 0) return;
+    if (!conv) return;
+    // A stub has no messages and must be hydrated from cloud. A local thread
+    // with messages is already current unless the initial index marked it as
+    // stale by clearing its messages.
     (async () => {
       try {
         const t = token();
