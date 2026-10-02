@@ -12,6 +12,7 @@ import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 import { collectRunSources, type Source } from "@/lib/citations";
 import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
+import { sanitizeImagePayload, withAnthropicImageParts, withOpenAIImageParts } from "@/lib/attachments";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, maxTools, maxRuntimeMs, memory, projectContext, userMemories, timezone, userLocation, search } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, maxTools, maxRuntimeMs, memory, projectContext, userMemories, timezone, userLocation, search, images } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
     const isAnthropic = provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || ""));
 
@@ -72,6 +73,11 @@ export async function POST(req: Request) {
   const capError = requireCapabilities(provider, mid, { toolCalling: true });
   if (capError) return NextResponse.json({ error: capError }, { status: 400 });
 
+  const cleanImages = (Array.isArray(images) ? images : [])
+    .map(sanitizeImagePayload)
+    .filter((x): x is { name: string; dataUrl: string } => x !== null)
+    .slice(0, 3);
+  const visionFull = provider === "openai" || isAnthropic;
   const policy = resolvePolicy({ maxSteps, maxTools, maxRuntimeMs });
   const steps = policy.maxSteps;
   const deadline = Date.now() + policy.timeoutMs;
@@ -210,7 +216,9 @@ export async function POST(req: Request) {
                 max_tokens: 4096,
                 stream: true,
                 system: sysText,
-                messages: toAnthropicMessages(history),
+                messages: visImages.length
+                  ? withAnthropicImages(toAnthropicMessages(history), visImages)
+                  : toAnthropicMessages(history),
                 tools: toAnthropicTools(toOpenAITools(runtime.tools)),
                 temperature: 0.3,
               }),
@@ -287,7 +295,7 @@ export async function POST(req: Request) {
           try {
             upstream = await client.chat.completions.create({
               model: mid,
-              messages: history,
+              messages: visImages.length ? withOpenAIImageParts(history, visImages) : history,
               temperature: 0.3,
               tools: openaiTools,
               tool_choice: "auto" as any,

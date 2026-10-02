@@ -10,6 +10,7 @@ import type { MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 import { buildRequestContext } from "@/lib/assistant-tools";
+import { sanitizeImagePayload } from "@/lib/attachments";
 
 /**
  * MAXXEN Chat — BYOK streaming endpoint.
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     userMemories?: unknown;
     timezone?: unknown;
     userLocation?: unknown;
+    images?: unknown;
   } = {};
   try {
     body = await req.json();
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
 
-  const { messages, mode, apiKey, baseURL, model, provider, userMemories, timezone, userLocation } = body;
+  const { messages, mode, apiKey, baseURL, model, provider, userMemories, timezone, userLocation, images } = body;
   const key = typeof apiKey === "string" ? apiKey : "";
   // Note: OpenCode always needs a key (its free tier rejects non-OpenCode
   // clients upstream); the adapter double-checks per model.
@@ -135,6 +137,16 @@ export async function POST(req: Request) {
     }
   }
 
+  const cleanImages = (Array.isArray(images) ? images : [])
+    .map(sanitizeImagePayload)
+    .filter((x): x is { name: string; dataUrl: string } => x !== null)
+    .slice(0, 3);
+  const visionFull = providerId === "openai" || providerId === "anthropic";
+  if (cleanImages.length && !visionFull) {
+    const note = `[Image${cleanImages.length === 1 ? "" : "s"} omitted — this provider path is text-only here; describe it in words instead.]`;
+    const lastUser = [...sized].reverse().find((m) => m.role === "user");
+    if (lastUser) lastUser.content += `\n\n${note}`;
+  }
   const modelRequest: ModelRequest = {
     apiKey: key,
     baseURL: url,
@@ -143,6 +155,7 @@ export async function POST(req: Request) {
     messages: sized,
     temperature: 0.7,
     mode: modeKey,
+    images: visionFull && cleanImages.length ? cleanImages : undefined,
     signal: req.signal,
   };
 
