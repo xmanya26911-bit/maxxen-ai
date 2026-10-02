@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
+import { resolveGithubToken } from "@/lib/github-account";
 
 // Lists the calling USER's own maxxen-data repo contents (their storage).
 // Body: { githubToken, path? } — path defaults to "" (repo root).
@@ -7,12 +8,13 @@ import { Octokit } from "octokit";
 export async function POST(req: Request) {
   try {
     const { githubToken, path } = await req.json();
-    if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token on /settings → Storage first." }, { status: 400 });
+    const resolvedToken = await resolveGithubToken(req, githubToken);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
     const { cleanGithubPath } = await import("@/lib/github-guard");
     const safePath = cleanGithubPath(path ?? "", { allowRoot: true });
     if (safePath === null)
       return NextResponse.json({ error: "path must be root, builds/, chats/, or settings.json." }, { status: 400 });
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
     try {
