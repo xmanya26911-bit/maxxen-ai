@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     userLocation: typeof userLocation === "string" ? userLocation : undefined,
   });
   const system = assembleSystemPrompt([
-    `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}"`,    userMemBlock,
+    `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`,    userMemBlock,
     timeLocBlock,
   ]);
   let sized = budgetMessages(clean);
