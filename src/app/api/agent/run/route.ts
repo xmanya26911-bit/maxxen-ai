@@ -135,7 +135,7 @@ export async function POST(req: Request) {
               (typeof projectContext === "string" && projectContext.trim()
                 ? `\n\nProject configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
                 : "") +
-              (userMemBlock ? `\n\n${userMemBlock}` : ""),
+              (userMemBlock ? `\n\n${userMemBlock}` : "") +
               (typeof timeLocBlock === "string" && timeLocBlock ? `\n\n${timeLocBlock}` : ""),
           },
           ...budgeted(sanitizeMessages(messages)),
