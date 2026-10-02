@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
 import { isDeletableChatPath } from "@/lib/chat-sync";
+import { resolveGithubToken } from "@/lib/github-account";
 
 /**
  * Delete a synced chat file from the USER's own maxxen-data repo.
@@ -22,15 +23,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
   const { githubToken, path } = body;
-  if (typeof githubToken !== "string" || !githubToken.trim()) {
-    return NextResponse.json({ error: "Add YOUR GitHub token on /settings → Storage first." }, { status: 400 });
+  const resolvedToken = await resolveGithubToken(req, githubToken);
+  if (!resolvedToken) {
+    return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
   }
   if (!isDeletableChatPath(path)) {
     return NextResponse.json({ error: "Only synced chat files can be deleted here." }, { status: 400 });
   }
   const safePath = path as string;
   try {
-    const oct = new Octokit({ auth: githubToken.trim() });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
     let sha: string | undefined;
