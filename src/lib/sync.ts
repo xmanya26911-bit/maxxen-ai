@@ -36,10 +36,9 @@ const SECRET_MAP: Record<string, string> = {
 export async function pullVault(session: string): Promise<{ ok: boolean; applied: number; message: string }> {
   try {
     const githubToken = ls("maxxen_github_token");
-    if (!githubToken) return { ok: false, applied: 0, message: "Add your GitHub token once — then everything syncs per account." };
     const r = await fetch("/api/vault/load", {
       method: "POST",
-      body: JSON.stringify({ session, githubToken }),
+      body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}) }),
     });
     const j = await r.json();
     if (j.error) return { ok: false, applied: 0, message: j.error };
@@ -68,7 +67,6 @@ export async function pullVault(session: string): Promise<{ ok: boolean; applied
 export async function pushVault(session: string): Promise<{ ok: boolean; message: string }> {
   try {
     const githubToken = ls("maxxen_github_token");
-    if (!githubToken) return { ok: false, message: "Saved locally. Add your GitHub token to sync per account." };
     const prefs: Record<string, string> = {};
     for (const [local, remote] of Object.entries(PREF_MAP)) {
       const v = ls(local);
@@ -81,7 +79,7 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
     }
     const r = await fetch("/api/vault/save", {
       method: "POST",
-      body: JSON.stringify({ session, githubToken, prefs, secrets }),
+      body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}), prefs, secrets }),
     });
     const j = await r.json();
     if (j.error) return { ok: false, message: j.error };
@@ -97,12 +95,10 @@ export async function forgetVault(session: string): Promise<{ ok: boolean; messa
   const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
   try {
     const githubToken = ls("maxxen_github_token");
-    if (githubToken) {
-      await fetch("/api/vault/save", {
+    await fetch("/api/vault/save", {
         method: "POST",
-        body: JSON.stringify({ session, githubToken, prefs: {}, secrets: {}, wipe: true }),
+        body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}), prefs: {}, secrets: {}, wipe: true }),
       });
-    }
     if (typeof window !== "undefined") {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i) || "";
