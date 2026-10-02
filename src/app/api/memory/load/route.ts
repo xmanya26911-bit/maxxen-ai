@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
 import { sanitizeMemory, EMPTY_MEMORY } from "@/lib/memory";
+import { resolveGithubToken } from "@/lib/github-account";
 
 /**
  * Load a project's memory from the USER's own maxxen-data repo.
@@ -10,10 +11,11 @@ import { sanitizeMemory, EMPTY_MEMORY } from "@/lib/memory";
 export async function POST(req: Request) {
   try {
     const { githubToken, project } = await req.json();
-    if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token first." }, { status: 400 });
+    const resolvedToken = await resolveGithubToken(req, githubToken);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
     const pid = typeof project === "string" ? project.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) : "";
     if (!pid) return NextResponse.json({ error: "project required." }, { status: 400 });
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     try {
       const cur: unknown = await oct.rest.repos.getContent({
