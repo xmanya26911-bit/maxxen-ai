@@ -415,3 +415,26 @@ export function isDuplicateCall(prevKey: string | null, tool: string, args: unkn
   const key = duplicateCallKey(tool, args);
   return { key, duplicate: prevKey !== null && prevKey === key };
 }
+
+// ---------------------------------------------------------------------------
+// Request context (temporal + location lines for the system prompt)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the per-request context block: always the server-clock UTC line,
+ * plus user-local time (validated timezone only) and user-provided location.
+ * Pure and total — never throws, never includes coordinates unless the user
+ * explicitly enabled precise location (coords live in the stored pref).
+ */
+export function buildRequestContext(opts: { timezone?: string; userLocation?: string }): string {
+  const parts = [timeContextBlock(new Date(), opts.timezone)];
+  if (typeof opts.userLocation === "string" && opts.userLocation.trim()) {
+    try {
+      const block = locationContextBlock(sanitizeLocationPref(JSON.parse(opts.userLocation)));
+      if (block) parts.push(block);
+    } catch {
+      /* malformed pref — time context still applies */
+    }
+  }
+  return parts.join("\n");
+}
