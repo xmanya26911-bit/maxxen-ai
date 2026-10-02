@@ -17,6 +17,7 @@ import {
   setProviderKey,
   type ProviderId,
 } from "@/lib/endpoint";
+import { MemorySection } from "./memory-section";
 
 function ls(key: string, value?: string): string {
   if (typeof window === "undefined") return "";
@@ -457,6 +458,8 @@ export function SettingsForm() {
             </div>
                       </div>
         </section>
+
+        <MemorySection />
 
         <section aria-labelledby="tokens-h" className="mt-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
           <h2 id="tokens-h" className="text-[15px] font-semibold">Integrations</h2>
