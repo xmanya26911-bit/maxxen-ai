@@ -8,12 +8,13 @@ import { ProviderError, type ModelEvent, type ModelRequest } from "@/lib/ai/type
 import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
+import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 
 /**
  * MAXXEN Chat — BYOK streaming endpoint.
  *
  * POST /api/chat
- * Body: { messages, mode?, apiKey, baseURL?, model?, provider?, session? }
+ * Body: { messages, mode?, apiKey, baseURL?, model?, provider?, session?, userMemories? }
  * Response: 200 text/event-stream — canonical MaxxenEvents (see lib/streaming).
  * Errors before streaming: non-200 JSON { error }.
  *
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
     baseURL?: unknown;
     model?: unknown;
     provider?: unknown;
+    userMemories?: unknown;
   } = {};
   try {
     body = await req.json();
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
 
-  const { messages, mode, apiKey, baseURL, model, provider } = body;
+  const { messages, mode, apiKey, baseURL, model, provider, userMemories } = body;
   const key = typeof apiKey === "string" ? apiKey : "";
   // Note: OpenCode always needs a key (its free tier rejects non-OpenCode
   // clients upstream); the adapter double-checks per model.
@@ -82,7 +84,9 @@ export async function POST(req: Request) {
 
   const modeKey =
     typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
-  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`;
+  const lastUserText = [...clean].reverse().find((m) => m.role === "user")?.content ?? "";
+  const userMemBlock = buildUserMemoryBlock(userMemories, lastUserText);
+  const system = `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}${userMemBlock ? `\n\n${userMemBlock}` : ""}`;
   const sized = budgeted(clean);
 
   let url: string;

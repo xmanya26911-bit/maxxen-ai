@@ -7,12 +7,13 @@ import { createOpenAICompatClient } from "@/lib/ai/providers/openai";
 import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { AgentPhase, MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
+import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
 //   run.start, agent.activity, tool.start/tool.delta/tool.result,
 //   permission.request, message.delta, error, run.complete.
-// Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps?, projectContext? }
+// Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps?, projectContext?, userMemories? }
 // Rules: OpenAI-compatible endpoints only (Anthropic has no function-calling
 // parity here — it gets a clear error, not a silent failure). Bounded loop
 // (default 6 tool steps). Every tool runs as the CALLER with THEIR keys.
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext, userMemories } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
@@ -100,6 +101,9 @@ export async function POST(req: Request) {
         const client = createOpenAICompatClient(apiKey, url);
         const { memoryBlock, sanitizeMemory } = await import("@/lib/memory");
         const memBlock = memoryBlock(memory ? sanitizeMemory(memory) : null);
+        const lastUserText =
+          sanitizeMessages(messages).filter((m) => m.role === "user").pop()?.content ?? "";
+        const userMemBlock = buildUserMemoryBlock(userMemories, lastUserText);
         const history: any[] = [
           {
             role: "system",
@@ -108,7 +112,8 @@ export async function POST(req: Request) {
               (memBlock ? `\n\n${memBlock}` : "") +
               (typeof projectContext === "string" && projectContext.trim()
                 ? `\n\nProject configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
-                : ""),
+                : "") +
+              (userMemBlock ? `\n\n${userMemBlock}` : ""),
           },
           ...budgeted(sanitizeMessages(messages)),
         ];

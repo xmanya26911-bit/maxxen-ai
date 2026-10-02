@@ -335,10 +335,96 @@ export default function ChatShell() {
     setPinned(true);
   }
 
+/** User-memory local mirror (shared across conversations). Never throws. */
+function readUserMemoryCacheSafe(): unknown[] {
+  try {
+    const raw = window.localStorage.getItem("maxxen_user_memories");
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Refresh the user-memory mirror (best-effort, cached copy applies meanwhile). */
+async function refreshUserMemoryCache(): Promise<void> {
+  try {
+    const token = window.localStorage.getItem("maxxen_github_token");
+    if (!token) return;
+    const r = await fetch("/api/user-memory/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ githubToken: token }),
+    });
+    const j = await r.json().catch(() => null);
+    if (r.ok && Array.isArray(j?.memories)) {
+      window.localStorage.setItem("maxxen_user_memories", JSON.stringify(j.memories.slice(0, 120)));
+    }
+  } catch {
+    /* offline — mirror stays */
+  }
+}
+
+/** Automatic memory on by default; Settings toggle stores "1"/"0". */
+function autoMemoryEnabled(): boolean {
+  try {
+    return window.localStorage.getItem("maxxen_memory_auto") !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Fire-and-forget extraction after a finished turn. Never awaited, never
+ * throws: a failed memory write must not break the chat response.
+ */
+function triggerMemoryExtract(
+  history: { role: string; content: string }[],
+  endpoint: { apiKey: string; baseURL: string; model: string; provider: string } | null
+): void {
+  try {
+    if (!autoMemoryEnabled() || !endpoint || !history.length) return;
+    const token = window.localStorage.getItem("maxxen_github_token");
+    if (!token) return;
+    const turns = history
+      .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+      .slice(-12)
+      .map((m) => ({ role: m.role, content: m.content.slice(0, 1500) }));
+    if (!turns.length) return;
+    void fetch("/api/user-memory/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        githubToken: token,
+        messages: turns,
+        apiKey: endpoint.apiKey,
+        baseURL: endpoint.baseURL,
+        model: endpoint.model,
+        provider: endpoint.provider,
+        auto: true,
+      }),
+    })
+      .then(async (r) => {
+        try {
+          const j = await r.json();
+          if (j?.ok && (j.remembered || j.created || j.updated)) void refreshUserMemoryCache();
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => undefined);
+  } catch {
+    /* never break chat */
+  }
+}
+
   // Pull this conversation's project memory into the local mirror so the
   // next agent run carries it (best-effort; cached copy applies meanwhile).
   useEffect(() => {
-    if (activeId) void refreshMemoryCache(activeId);
+    if (activeId) {
+      void refreshMemoryCache(activeId);
+      void refreshUserMemoryCache();
+    }
   }, [activeId]);
 
   // Visual-builder handoff: the preview pane dispatches element Explain /
@@ -420,7 +506,12 @@ export default function ChatShell() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: history, mode: requestMode, ...endpoint }),
+          body: JSON.stringify({
+            messages: history,
+            mode: requestMode,
+            ...endpoint,
+            userMemories: readUserMemoryCacheSafe(),
+          }),
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -480,6 +571,7 @@ export default function ChatShell() {
               ? { content: acc, failed: false, blocks: extractBlocks(acc) }
               : { failed: true, content: "The model returned an empty response." }
           );
+          if (ok && acc.trim()) triggerMemoryExtract(history, endpointCredentials());
         }
       }
     },
@@ -572,6 +664,7 @@ export default function ChatShell() {
             userEmail: useAuthStore.getState().session?.email || undefined,
             composioUserId: store().getItem("maxxen_composio_user_id") || undefined,
             memory: readMemoryCacheSafe(convId),
+            userMemories: readUserMemoryCacheSafe(),
           }),
           signal: controller.signal,
         });
@@ -642,6 +735,7 @@ export default function ChatShell() {
                   ? { content: acc, failed: false, blocks: extractBlocks(acc) }
                   : { failed: true, content: "The agent returned an empty response." }
               );
+              if (acc.trim()) triggerMemoryExtract(history, endpointCredentials());
             }
           }
         };

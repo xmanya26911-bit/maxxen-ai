@@ -18,6 +18,7 @@ const PREF_MAP: Record<string, string> = {
   maxxen_provider: "provider",
   maxxen_vercel_project: "vercelProject",
   maxxen_composio_user_id: "composioUserId",
+  maxxen_memory_auto: "memoryAuto",
 };
 const SECRET_MAP: Record<string, string> = {
   // Per-provider chat keys (legacy maxxen_apikey still synced for older clients).
