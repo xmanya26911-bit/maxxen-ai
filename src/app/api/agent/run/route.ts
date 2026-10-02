@@ -19,8 +19,7 @@ import { sanitizeImagePayload, withAnthropicImageParts, withOpenAIImageParts } f
 //   run.start, agent.activity, tool.start/tool.delta/tool.result,
 //   permission.request, message.delta, error, run.complete.
 // Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps?, projectContext?, userMemories? }
-// Rules: OpenAI-compatible endpoints only (Anthropic has no function-calling
-// parity here — it gets a clear error, not a silent failure). Bounded loop
+// Rules: OpenAI-compatible and Anthropic native tool-use endpoints. Bounded loop
 // (default 6 tool steps). Every tool runs as the CALLER with THEIR keys.
 // Private chain-of-thought is never exposed — only concise activity lines.
 // Identity, capabilities, and tools come from the Maxxen runtime (one stable
@@ -78,6 +77,7 @@ export async function POST(req: Request) {
     .filter((x): x is { name: string; dataUrl: string } => x !== null)
     .slice(0, 3);
   const visionFull = provider === "openai" || isAnthropic;
+  const visImages = visionFull ? cleanImages : [];
   const policy = resolvePolicy({ maxSteps, maxTools, maxRuntimeMs });
   const steps = policy.maxSteps;
   const deadline = Date.now() + policy.timeoutMs;
