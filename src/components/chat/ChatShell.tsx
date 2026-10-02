@@ -402,7 +402,7 @@ async function refreshUserMemoryCache(): Promise<void> {
     if (!token) return;
     const r = await fetch("/api/user-memory/list", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(useAuthStore.getState().session?.token ? { "x-maxxen-session": useAuthStore.getState().session.token } : {}) },
       body: JSON.stringify({ githubToken: token }),
     });
     const j = await r.json().catch(() => null);
@@ -851,7 +851,7 @@ function triggerMemoryExtract(
     const snapshot = useChatStore.getState();
     const conv = snapshot.conversations.find((c) => c.id === pending.convId);
     if (!conv) return;
-    const userText = `Confirmed: proceed with exactly this action and nothing else:\n${pending.summary}`;
+    const userText = `Confirmed: ${pending.tool}\n${pending.summary}`;
     snapshot.appendMessage(pending.convId, {
       id: uid(),
       role: "user",
