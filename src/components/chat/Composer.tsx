@@ -1,13 +1,17 @@
 "use client";
 
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X } from "lucide-react";
 import { CHAT_MODES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { readPickedFile, validateAttachment, type Attachment } from "@/lib/attachments";
 import type { ChatMode } from "./types";
 
 /** Max textarea height ≈ 6 rows before it starts scrolling internally. */
 const MAX_HEIGHT = 168;
+
+/** At most 5 files per message (server enforces the same caps). */
+const MAX_FILES = 5;
 
 export interface ComposerProps {
   /** When true the send button becomes a Stop button. */
@@ -16,20 +20,30 @@ export interface ComposerProps {
   mode: ChatMode;
   /** Selects a chat mode chip. */
   onModeChange: (mode: ChatMode) => void;
-  /** Sends the message together with the selected mode. */
-  onSend: (text: string, mode: ChatMode) => void;
+  /** Sends the message together with the selected mode and attachments. */
+  onSend: (text: string, mode: ChatMode, attachments: Attachment[]) => void;
   onStop: () => void;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
  * Composer — liquid-glass input shell (border + glow on focus-within) with a
  * scrollable mode chips toolbar (+ quiet Shift/Enter hint), an auto-resizing
- * textarea (1→6 rows), Enter=send / Shift+Enter=newline, and a white
- * circular Send that turns into a Stop control while streaming.
+ * textarea (1→6 rows), Enter=send / Shift+Enter=newline, file attachments
+ * (text/code/images, validated before reading), and a white circular Send
+ * that turns into a Stop control while streaming.
  */
 function ComposerImpl({ streaming, mode, onModeChange, onSend, onStop }: ComposerProps) {
   const [value, setValue] = useState("");
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [pickError, setPickError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   // Auto-resize: reset to content height, capped at MAX_HEIGHT.
   useEffect(() => {
@@ -39,13 +53,37 @@ function ComposerImpl({ streaming, mode, onModeChange, onSend, onStop }: Compose
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
   }, [value]);
 
-  const canSend = value.trim().length > 0 && !streaming;
+  const canSend = (value.trim().length > 0 || files.length > 0) && !streaming;
+
+  const pickFiles = async (list: FileList | null) => {
+    if (!list || streaming) return;
+    setPickError("");
+    const remaining = Math.max(0, MAX_FILES - files.length);
+    const chosen = [...list].slice(0, Math.max(remaining, 1));
+    for (const f of chosen) {
+      if (files.length >= MAX_FILES) break;
+      const v = validateAttachment({ name: f.name, mimeType: f.type, size: f.size });
+      if (!v.ok) {
+        setPickError(v.error);
+        continue;
+      }
+      try {
+        const att = await readPickedFile(f);
+        setFiles((prev) => (prev.length >= MAX_FILES ? prev : [...prev, att]));
+      } catch {
+        setPickError(`Couldn't read ${f.name}.`);
+      }
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
 
   const submit = () => {
     const text = value.trim();
-    if (!text || streaming) return;
-    onSend(text, mode);
-    setValue(""); // the resize effect snaps the textarea back to one row
+    if ((!text && !files.length) || streaming) return;
+    onSend(text, mode, files);
+    setValue("");
+    setFiles([]);
+    setPickError("");
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -94,8 +132,53 @@ function ComposerImpl({ streaming, mode, onModeChange, onSend, onStop }: Compose
             <span className="ml-1 text-[10px] text-white/30">newline</span>
           </span>
         </div>
+        {/* Attachment chips */}
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-2 pt-2" aria-label="Attached files">
+            {files.map((f) => (
+              <span
+                key={f.id}
+                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 font-mono text-[10.5px] text-white/70"
+              >
+                <span className="truncate">{f.name}</span>
+                <span className="shrink-0 text-white/30">{formatBytes(f.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => setFiles((prev) => prev.filter((x) => x.id !== f.id))}
+                  aria-label={`Remove ${f.name}`}
+                  className="mx-focus shrink-0 rounded p-0.5 text-white/40 hover:text-white"
+                >
+                  <X size={11} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        {pickError && (
+          <p role="alert" className="px-4 pt-1.5 text-[11.5px] text-red-200/90">{pickError}</p>
+        )}
         {/* Text row */}
         <div className="flex items-end gap-2 pl-2">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={streaming}
+            aria-label="Attach files"
+            title="Attach text, code, or images"
+            className="mx-focus mx-press mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-white disabled:opacity-30"
+          >
+            <Paperclip size={15} aria-hidden="true" />
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept=".txt,.md,.markdown,.json,.csv,.log,.js,.ts,.tsx,.jsx,.py,.go,.rs,.java,.c,.cpp,.h,.css,.html,.xml,.yaml,.yml,.toml,.sh,.sql,.png,.jpg,.jpeg,.webp,.gif"
+            onChange={(e) => void pickFiles(e.target.files)}
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
           <textarea
             ref={textareaRef}
             rows={1}
