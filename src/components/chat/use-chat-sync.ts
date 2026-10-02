@@ -75,7 +75,7 @@ export async function persistConversation(id: string): Promise<void> {
 export async function syncDeleteConv(id: string): Promise<void> {
   try {
     const t = token();
-    if (!t) return;
+    if (!t && !useAuthStore.getState().session?.token) return;
     await postJSON("/api/github/delete", { githubToken: t, path: chatFilePath(id) });
     const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
     const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
