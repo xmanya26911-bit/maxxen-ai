@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { resolveEndpoint, type ResolvedEndpoint } from "@/lib/ai/request";
+import { assembleSystemPrompt, requireCapabilities, resolveEndpoint, resolvePolicy, type ResolvedEndpoint } from "@/lib/ai/request";
 import { budgeted, sanitizeMessages } from "@/lib/context";
 import { toOpenAITools, type Ctx } from "@/lib/tools";
 import { buildRuntime } from "@/lib/maxxen-runtime";
 import { createOpenAICompatClient } from "@/lib/ai/providers/openai";
+import { resolveAnthropicModel } from "@/lib/ai/providers/anthropic";
 import { encodeEvent, STREAM_HEADERS } from "@/lib/streaming/encode";
 import type { AgentPhase, MaxxenEvent } from "@/lib/streaming/types";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
@@ -21,7 +22,6 @@ import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
 // Private chain-of-thought is never exposed — only concise activity lines.
 // Identity, capabilities, and tools come from the Maxxen runtime (one stable
 // identity for every model — the LLM is replaceable, Maxxen is not).
-const MAX_STEPS = 6;
 
 export async function POST(req: Request) {
   let body: any = {};
@@ -34,13 +34,10 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext, userMemories, timezone, userLocation, search } = body;
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, maxTools, maxRuntimeMs, memory, projectContext, userMemories, timezone, userLocation, search } = body;
   if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
-  if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
-    return NextResponse.json(
-      { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, Gemini, or a Custom base URL like Groq, Ollama, OpenRouter). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
-      { status: 400 }
-    );
+    const isAnthropic = provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || ""));
+
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages." }, { status: 400 });
   // OpenCode agent runs: chat-family models only (the loop speaks OpenAI-style
   // function-calling), endpoint pinned server-side, caller key always required
@@ -69,8 +66,15 @@ export async function POST(req: Request) {
         { status: 400 }
       );
   }
+  // ModelRouter gate: the loop needs real tool support, never silently downgraded.
+  const capError = requireCapabilities(provider, mid, { toolCalling: true });
+  if (capError) return NextResponse.json({ error: capError }, { status: 400 });
 
-  const steps = Math.min(Math.max(Number(maxSteps) || MAX_STEPS, 1), 10);
+  const policy = resolvePolicy({ maxSteps, maxTools, maxRuntimeMs });
+  const steps = policy.maxSteps;
+  const deadline = Date.now() + policy.timeoutMs;
+  let toolCalls = 0;
+  let budgetHit = false;
   // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
   // authorizes world-changing tools. Model-supplied confirm is stripped below.
   const userConfirmed = Array.isArray(messages) && messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.startsWith("Confirmed:"));
@@ -127,14 +131,15 @@ export async function POST(req: Request) {
         const history: any[] = [
           {
             role: "system",
-            content:
-              runtime.systemPrompt +
-              (memBlock ? `\n\n${memBlock}` : "") +
-              (typeof projectContext === "string" && projectContext.trim()
-                ? `\n\nProject configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
-                : "") +
-              (userMemBlock ? `\n\n${userMemBlock}` : "") +
-              (typeof timeLocBlock === "string" && timeLocBlock ? `\n\n${timeLocBlock}` : ""),
+            content: assembleSystemPrompt([
+              runtime.systemPrompt,
+              memBlock,
+              typeof projectContext === "string" && projectContext.trim()
+                ? `Project configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
+                : "",
+              userMemBlock,
+              typeof timeLocBlock === "string" ? timeLocBlock : "",
+            ]),
           },
           ...budgeted(sanitizeMessages(messages)),
         ];
@@ -150,9 +155,106 @@ export async function POST(req: Request) {
             "planning"
           );
         }
+        // Anthropic native step (Phase 3): model call only — text streams live,
+        // tool calls accumulate, execution below is shared with every provider.
+        const callAnthropicStep = async (): Promise<{
+          text: string;
+          calls: any[];
+          delivered: boolean;
+        } | null> => {
+          const { toAnthropicMessages, toAnthropicTools, accumulateAnthropicTurn } = await import(
+            "@/lib/agent/anthropic"
+          );
+          const sysText =
+            typeof history[0]?.content === "string" && (history[0] as { role?: unknown })?.role === "system"
+              ? (history[0].content as string)
+              : runtime.systemPrompt;
+          let upstream: Response;
+          try {
+            upstream = await fetch(`${url.endsWith("/") ? url.slice(0, -1) : url}/v1/messages`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
+              },
+              body: JSON.stringify({
+                model: resolveAnthropicModel(mid),
+                max_tokens: 4096,
+                stream: true,
+                system: sysText,
+                messages: toAnthropicMessages(history),
+                tools: toAnthropicTools(toOpenAITools(runtime.tools)),
+                temperature: 0.3,
+              }),
+              signal: req.signal,
+            });
+          } catch (e: unknown) {
+            fail(e instanceof Error ? e.message : "Anthropic request failed.");
+            return null;
+          }
+          if (!upstream.ok || !upstream.body) {
+            const j = await upstream.json().catch(() => ({}));
+            const msg = `${upstream.status} ${(j as { error?: { message?: string } }).error?.message || "Anthropic request failed"}`;
+            fail(msg);
+            return null;
+          }
+          let delivered = false;
+          try {
+            const turn = await accumulateAnthropicTurn(upstream.body.getReader(), req.signal, (t) => {
+              delivered = true;
+              send({ type: "message.delta", text: t });
+            });
+            if (req.signal.aborted) {
+              try {
+                controller.close();
+              } catch {
+                /* already closed */
+              }
+              return null;
+            }
+            const calls = turn.toolUses
+              .filter((u) => u.name)
+              .map((u, i) => ({
+                id: u.id || `call_anthropic_${i}`,
+                type: "function" as const,
+                function: { name: u.name, arguments: u.inputJson || "{}" },
+              }));
+            return { text: turn.text, calls, delivered };
+          } catch (e: unknown) {
+            if (delivered) {
+              activity(`Anthropic stream ended early: ${String(e instanceof Error ? e.message : e).slice(0, 200)}`, "error");
+              return { text: "", calls: [], delivered: true };
+            }
+            fail(e instanceof Error ? e.message : "Anthropic stream failed.");
+            return null;
+          }
+        };
         for (let step = 0; step < steps; step++) {
-          // True upstream streaming: text deltas forward live (token by
-          // token) while tool calls accumulate across chunks.
+          if (Date.now() > deadline) {
+            activity("Time budget reached — summarizing with partial progress", "done");
+            break;
+          }
+          // Model call: Anthropic natively above, OpenAI-compatible below.
+          // Everything after shares one tool-execution path.
+          let text = "";
+          let calls: any[] = [];
+          if (isAnthropic) {
+            const turn = await callAnthropicStep();
+            if (!turn) return;
+            if (!turn.calls.length && !turn.text.trim() && !turn.delivered) {
+              fail("Model returned nothing. Retry, or switch models.");
+              return;
+            }
+            if (!turn.calls.length) {
+              send({ type: "run.complete", mode: "agent" });
+              controller.close();
+              return;
+            }
+            text = turn.text;
+            calls = turn.calls;
+          } else {
           let upstream: any;
           try {
             upstream = await client.chat.completions.create({
@@ -167,7 +269,6 @@ export async function POST(req: Request) {
             fail(e?.message || "Model call failed.");
             return;
           }
-          let text = "";
           const slots: { id: string; name: string; args: string }[] = [];
           try {
             for await (const chunk of upstream as any) {
@@ -200,13 +301,14 @@ export async function POST(req: Request) {
             }
             activity(`Upstream stream ended early: ${detail}`, "error");
           }
-          const calls = slots
+          calls = slots
             .filter((s) => s && s.name)
             .map((s, i) => ({
               id: s.id || `call_maxxen_${step}_${i}`,
               type: "function" as const,
               function: { name: s.name, arguments: s.args || "{}" },
             }));
+          }
           if (!calls.length) {
             if (!text.trim()) {
               fail("Model returned nothing. Retry, or switch models.");
@@ -294,6 +396,12 @@ export async function POST(req: Request) {
               tool_call_id: call.id,
               content: JSON.stringify({ ok: res.ok, summary: res.summary, data: res.data ?? null }).slice(0, 8000),
             });
+            toolCalls++;
+            if (toolCalls >= policy.maxToolCalls) {
+              activity("Tool budget reached — summarizing with partial progress", "done");
+              budgetHit = true;
+              break;
+            }
             if (!res.ok && (res as any).needsConfirm) {
               history.push({
                 role: "user",
@@ -301,6 +409,7 @@ export async function POST(req: Request) {
               });
             }
           }
+          if (budgetHit) break;
         }
         // Step budget exhausted: stream a closing summary, keep partial work.
         activity("Step budget reached — summarizing", "done");
