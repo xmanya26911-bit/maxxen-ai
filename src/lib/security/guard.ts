@@ -31,7 +31,7 @@ export type SessionCheck =
  * client sends `session` (header or body) — the routes already call the guard,
  * so enforcement becomes a one-line switch with no route redesign.
  */
-export const SESSION_ENFORCED = false;
+export const SESSION_ENFORCED = true;
 
 /** Verify a raw token string. */
 export function sessionFromToken(token: unknown): SessionCheck {
