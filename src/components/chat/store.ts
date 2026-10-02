@@ -5,7 +5,7 @@ import type { Conversation, Message } from "./types";
 export type { Conversation };
 
 /**
- * Chat store — zustand + persist (localStorage key "maxxen-chat-v1", data v2).
+ * Chat store — zustand + persist (localStorage key "maxxen-chat-v1", data v3).
  * `streaming` is transient and never persisted; conversations + activeId are.
  * Caps mirror the real MAXXEN app: at most MAX_CHATS conversations (oldest
  * dropped silently) and MAX_MSGS_PER_CHAT messages per thread (oldest
@@ -54,12 +54,27 @@ interface LegacyMessage extends Message {
 
 /** Renames the v1 `error` flag to the v2 `failed` flag on one persisted message. */
 function migrateMessage(m: LegacyMessage): Message {
-  if (m.error) {
-    const next: Message = { ...m, failed: true };
+  const next: Message = { ...m };
+  if (next.error) {
+    next.failed = true;
     delete (next as LegacyMessage).error;
-    return next;
   }
-  return m;
+  // Image data URLs are session-only and must never survive persistence.
+  // Text attachments remain durable for local chat recovery.
+  if (Array.isArray(next.attachments)) {
+    next.attachments = next.attachments
+      .filter((a) => a && a.kind === "text" && typeof a.text === "string")
+      .map((a) => ({
+        id: String(a.id),
+        name: String(a.name).slice(0, 120),
+        mimeType: String(a.mimeType || "text/plain"),
+        size: Number(a.size) || 0,
+        kind: "text" as const,
+        text: String(a.text).slice(0, 200_000),
+        ...(a.truncated ? { truncated: true } : {}),
+      }));
+  }
+  return next;
 }
 
 /** Normalizes + trims a persisted message list (oldest pairs dropped). */
@@ -162,7 +177,7 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: "maxxen-chat-v1",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => {
         if (typeof window === "undefined") {
           // Server render: no storage. createJSONStorage catches this and disables persistence.
@@ -170,9 +185,17 @@ export const useChatStore = create<ChatState>()(
         }
         return window.localStorage;
       }),
-      // Only durable fields are persisted; `streaming` is session-transient.
-      partialize: (s) => ({ conversations: s.conversations, activeId: s.activeId }),
-      // v1 → v2: rename `error` → `failed`, apply the caps, keep activeId valid.
+      // Only durable fields are persisted; streaming is session-transient.
+      // Strip image data URLs at the persistence boundary; text attachments stay durable.
+      partialize: (s) => ({
+        conversations: s.conversations.map((c) => ({
+          ...c,
+          messages: c.messages.map((m) => migrateMessage(m)),
+        })),
+        activeId: s.activeId,
+      }),
+      // v1/v2 → v3: rename error → failed, drop persisted image payloads,
+      // apply the caps, keep activeId valid.
       migrate: (persisted) => {
         const raw = (typeof persisted === "object" && persisted !== null ? persisted : {}) as {
           conversations?: unknown;
