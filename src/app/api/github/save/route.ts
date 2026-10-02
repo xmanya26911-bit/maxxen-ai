@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
+import { resolveGithubToken } from "@/lib/github-account";
 
 // Writes to the calling USER's own maxxen-data repo (derived from THEIR token).
 // Body: { githubToken, path, content (object|string), message }
@@ -24,7 +25,8 @@ function cleanPath(raw: unknown): string {
 export async function POST(req: Request) {
   try {
     const { githubToken, path, content, message } = await req.json();
-    if (!githubToken) return NextResponse.json({ error: "githubToken required (YOUR token)." }, { status: 400 });
+    const resolvedToken = await resolveGithubToken(req, githubToken);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
     let safePath: string;
     try {
       safePath = cleanPath(path);
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: secretRefusal(leaks, safePath) }, { status: 422 });
     }
 
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
     try {
