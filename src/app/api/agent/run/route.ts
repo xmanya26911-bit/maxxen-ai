@@ -86,7 +86,7 @@ export async function POST(req: Request) {
   // Human gate: only an explicit user "Confirmed:" message (from the Confirm button)
   // authorizes world-changing tools. Model-supplied confirm is stripped below.
   const latestUserMessage = [...messages].reverse().find((m: any) => m?.role === "user" && typeof m?.content === "string")?.content as string | undefined;
-  const confirmedToolMatch = latestUserMessage?.match(/^Confirmed:\s*([A-Za-z0-9_-]{1,80})\s*(?:\\n|$)/);
+  const confirmedToolMatch = latestUserMessage?.match(/^Confirmed:\s*([A-Za-z0-9_-]{1,80})\s*(?:\n|$)/);
   const confirmedTool = confirmedToolMatch?.[1];
   const email = typeof body?.userEmail === "string" ? body.userEmail.toLowerCase().trim() : undefined;
   const composioUserId =
