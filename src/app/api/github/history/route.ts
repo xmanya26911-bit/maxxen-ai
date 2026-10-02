@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveGithubToken } from "@/lib/github-account";
 
 // File history in the USER's own maxxen-data repo (rollback fuel).
 // Body: { githubToken, path, limit? } → recent commits touching that path.
@@ -7,10 +8,11 @@ export async function POST(req: Request) {
     const { Octokit } = await import("octokit");
     const { cleanGithubPath } = await import("@/lib/github-guard");
     const { githubToken, path, limit } = await req.json();
-    if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token first." }, { status: 400 });
+    const resolvedToken = await resolveGithubToken(req, githubToken);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
     const safePath = cleanGithubPath(path);
     if (!safePath) return NextResponse.json({ error: "path must be under builds/, chats/, or settings.json." }, { status: 400 });
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const commits = await oct.rest.repos.listCommits({
       owner: me.login,
