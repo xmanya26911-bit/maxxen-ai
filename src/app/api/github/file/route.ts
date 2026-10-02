@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveGithubToken } from "@/lib/github-account";
 
 // Read a file at a specific commit + one-click rollback in the USER's repo.
 // Body: { githubToken, path, sha?, rollback? }
@@ -10,12 +11,13 @@ export async function POST(req: Request) {
     const { Octokit } = await import("octokit");
     const { cleanGithubPath } = await import("@/lib/github-guard");
     const { githubToken, path, sha, rollback } = await req.json();
-    if (!githubToken) return NextResponse.json({ error: "Add YOUR GitHub token first." }, { status: 400 });
+    const resolvedToken = await resolveGithubToken(req, githubToken);
+    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
     const safePath = cleanGithubPath(path);
     if (!safePath) return NextResponse.json({ error: "path must be under builds/, chats/, or settings.json (no .., no .github)." }, { status: 400 });
     if (sha !== undefined && (typeof sha !== "string" || !sha.trim() || sha.length > 100))
       return NextResponse.json({ error: "Invalid sha." }, { status: 400 });
-    const oct = new Octokit({ auth: githubToken });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
 
