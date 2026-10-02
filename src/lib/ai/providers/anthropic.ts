@@ -20,6 +20,10 @@ import { providerHintFor } from "./openai";
  * the agent route refuses Claude rather than pretending it works. Making Claude
  * an agent-capable model is a provider-phase task.
  */
+export function resolveAnthropicModel(mid: string): string {
+  return mid === "gpt-4o-mini" ? "claude-3-5-haiku-latest" : mid;
+}
+
 export const anthropicAdapter: ProviderAdapter = {
   id: "anthropic",
   label: "✶ Claude",
@@ -30,12 +34,12 @@ export const anthropicAdapter: ProviderAdapter = {
   },
 
   supportsToolCalling(): boolean {
-    return false;
+    return true;
   },
 
   async complete(request: ModelRequest): Promise<AsyncIterable<ModelEvent>> {
     const url = `${request.baseURL.replace(/\/$/, "")}/v1/messages`;
-    const model = request.model === "gpt-4o-mini" ? "claude-3-5-haiku-latest" : request.model;
+    const model = resolveAnthropicModel(request.model);
 
     let upstream: Response;
     try {

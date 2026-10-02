@@ -36,11 +36,10 @@ export function openAICompatibleCapabilities(): CapabilityDescriptor {
 }
 
 /**
- * Claude's Messages API. MAXXEN supports Claude for streaming chat only; the
- * agent loop requires OpenAI-style function-calling, which this adapter does
- * NOT implement, so `toolCalling` is honestly false (the agent route refuses
- * Claude rather than pretending it works).
+ * Claude's Messages API. The agent loop drives native Anthropic
+ * tool_use blocks (lib/agent/anthropic), so `toolCalling` is honestly true.
+ * Chat streaming is unchanged.
  */
 export function anthropicCapabilities(): CapabilityDescriptor {
-  return { ...base() };
+  return { ...base(), toolCalling: true };
 }

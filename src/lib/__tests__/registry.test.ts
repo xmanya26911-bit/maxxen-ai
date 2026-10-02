@@ -29,8 +29,8 @@ describe("provider registry is the single source of truth", () => {
   it("honest capabilities: OpenAI-compatible supports tools, Claude does not", () => {
     expect(capabilitiesFor("openai", "gpt-4o-mini").toolCalling).toBe(true);
     expect(capabilitiesFor("custom", "any").toolCalling).toBe(true);
-    expect(capabilitiesFor("anthropic", "claude-3-5-haiku-latest").toolCalling).toBe(false);
-    expect(supportsToolCalling("anthropic", "claude-3-5-haiku-latest")).toBe(false);
+    expect(capabilitiesFor("anthropic", "claude-3-5-haiku-latest").toolCalling).toBe(true); // native tool loop (Phase 3)
+    expect(supportsToolCalling("anthropic", "claude-3-5-haiku-latest")).toBe(true); // native tool loop (Phase 3)
     // Unverifiable numeric limits are represented as null, not guessed.
     expect(capabilitiesFor("openai", "gpt-4o-mini").maxContextTokens).toBeNull();
     // Streaming is verified for every provider.
