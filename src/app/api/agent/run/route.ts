@@ -12,7 +12,7 @@ import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
 //   run.start, agent.activity, tool.start/tool.delta/tool.result,
 //   permission.request, message.delta, error, run.complete.
-// Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps? }
+// Body: { messages, apiKey, baseURL, model, githubToken?, vercelToken?, composioKey?, maxSteps?, projectContext? }
 // Rules: OpenAI-compatible endpoints only (Anthropic has no function-calling
 // parity here — it gets a clear error, not a silent failure). Bounded loop
 // (default 6 tool steps). Every tool runs as the CALLER with THEIR keys.
@@ -32,19 +32,48 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory } = body;
-  if (!apiKey) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
+  const { messages, apiKey, baseURL, model, provider, githubToken, vercelToken, composioKey, maxSteps, memory, projectContext } = body;
+  const opencodeAgent = provider === "opencode";
+  if (!apiKey && !opencodeAgent) return NextResponse.json({ error: "Missing API key." }, { status: 400 });
   if (provider === "anthropic" || /api\.anthropic\.com/i.test(String(baseURL || "")))
     return NextResponse.json(
       { error: "Agent loop needs an OpenAI-compatible endpoint (OpenAI, Gemini, or a Custom base URL like Groq, Ollama, OpenRouter). Claude's API has no function-calling parity here — use Claude in normal chat instead." },
       { status: 400 }
     );
   if (!Array.isArray(messages) || !messages.length) return NextResponse.json({ error: "No messages." }, { status: 400 });
+  // OpenCode agent runs: chat-family models only (the loop speaks OpenAI-style
+  // function-calling), endpoint pinned server-side. Keyless runs are refused
+  // with an explicit message — the agent SDK client always sends auth, so
+  // free-keyless agent use stays unsupported (free chat works in /chat).
   let url: string;
-  try {
-    url = assertSafeBaseURL(baseURL, "https://api.openai.com/v1");
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 400 });
+  if (provider === "opencode") {
+    const { familyForModelId, isFreeModelId, OPENCODE_CHAT_URL } = await import(
+      "@/lib/ai/providers/opencode-catalog"
+    );
+    const opencodeModel = ((model || "") as string).trim();
+    if (!opencodeModel)
+      return NextResponse.json({ error: "Pick an OpenCode model first (Settings → AI endpoint)." }, { status: 400 });
+    if (familyForModelId(opencodeModel) !== "openai-chat")
+      return NextResponse.json(
+        { error: "\u201c" + opencodeModel + "\u201d cannot drive the agent loop — only OpenAI-chat-family OpenCode models support tools. Use it in /chat, or pick a chat-family model." },
+        { status: 400 }
+      );
+    if (!apiKey)
+      return NextResponse.json(
+        {
+          error: isFreeModelId(opencodeModel)
+            ? "Agent runs need your OpenCode key even for free models (the agent client always sends auth). Add it in Settings → AI endpoint — or use this model keyless in /chat."
+            : "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint.",
+        },
+        { status: 400 }
+      );
+    url = OPENCODE_CHAT_URL;
+  } else {
+    try {
+      url = assertSafeBaseURL(baseURL, "https://api.openai.com/v1");
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
   }
   const mid = ((model || "") as string).trim() || "gpt-4o-mini";
   const steps = Math.min(Math.max(Number(maxSteps) || MAX_STEPS, 1), 10);
@@ -78,7 +107,15 @@ export async function POST(req: Request) {
         const { memoryBlock, sanitizeMemory } = await import("@/lib/memory");
         const memBlock = memoryBlock(memory ? sanitizeMemory(memory) : null);
         const history: any[] = [
-          { role: "system", content: runtime.systemPrompt + (memBlock ? `\n\n${memBlock}` : "") },
+          {
+            role: "system",
+            content:
+              runtime.systemPrompt +
+              (memBlock ? `\n\n${memBlock}` : "") +
+              (typeof projectContext === "string" && projectContext.trim()
+                ? `\n\nProject configuration (workspace context only — never model access):\n${projectContext.trim().slice(0, 4000)}`
+                : ""),
+          },
           ...budgeted(sanitizeMessages(messages)),
         ];
         activity("Planning", "planning");

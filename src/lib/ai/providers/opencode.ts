@@ -27,7 +27,6 @@ import {
   OPENCODE_GEMINI_URL,
   OPENCODE_RESPONSES_URL,
   familyForModelId,
-  isFreeModelId,
   modelNeedsKey,
   normalizeUpstreamError,
   type OpenCodeApiFamily,
@@ -315,8 +314,6 @@ export const opencodeAdapter: ProviderAdapter = {
         "OpenCode requires authentication for this model. Add your OpenCode key in Settings → AI endpoint (free models — names ending in -free — need no key)."
       );
     }
-    // Free-model call with no key on record: isFreeModelId documents intent.
-    void isFreeModelId;
     const ctx = withTimeout(request.signal);
     try {
       switch (family) {

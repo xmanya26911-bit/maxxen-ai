@@ -13,7 +13,7 @@
 import type { ChatMsg } from "@/lib/context";
 
 /** Canonical provider ids. Single source of truth for the whole app. */
-export const PROVIDER_IDS = ["openai", "anthropic", "gemini", "custom"] as const;
+export const PROVIDER_IDS = ["openai", "anthropic", "gemini", "custom", "opencode"] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /** A concrete provider + model a request should run against. */

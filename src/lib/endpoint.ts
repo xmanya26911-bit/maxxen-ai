@@ -60,7 +60,10 @@ export function getEndpoint(): Endpoint | null {
   const baseURL = lsGet("maxxen_baseurl");
   const model = lsGet("maxxen_model");
   const apiKey = lsGet(providerKeyName(provider)) || lsGet("maxxen_apikey");
-  if (!apiKey.trim() || !model.trim()) return null;
+  if (!model.trim()) return null;
+  // OpenCode free models are explicitly keyless per OpenCode docs; paid
+  // models are gated server-side, so the endpoint may carry an empty key.
+  if (!apiKey.trim() && provider !== "opencode") return null;
   return { provider, baseURL, apiKey: apiKey.trim(), model: model.trim() };
 }
 

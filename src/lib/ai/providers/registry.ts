@@ -1,4 +1,5 @@
 import { anthropicCapabilities, openAICompatibleCapabilities } from "../capabilities";
+import { familyForModelId } from "./opencode-catalog";
 import { PROVIDER_IDS, type CapabilityDescriptor, type ProviderId } from "../types";
 
 // Re-export the canonical provider ids/type so consumers have ONE provider
@@ -71,6 +72,15 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     defaultModel: "gemini-1.5-flash",
     models: [{ id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" }],
   },
+  opencode: {
+    id: "opencode",
+    label: "OpenCode",
+    glyph: "⬡",
+    defaultBaseURL: "https://opencode.ai/inference/openai/v1",
+    keyHint: "optional — free models need no key",
+    defaultModel: "mimo-v2.5-free",
+    models: [],
+  },
   custom: {
     id: "custom",
     label: "Custom",
@@ -106,8 +116,13 @@ export function displayLabel(id: ProviderId): string {
 }
 
 /** Capability descriptor for a provider/model. */
-export function capabilitiesFor(id: ProviderId, _model: string): CapabilityDescriptor {
-  return id === "anthropic" ? anthropicCapabilities() : openAICompatibleCapabilities();
+export function capabilitiesFor(id: ProviderId, model: string): CapabilityDescriptor {
+  if (id === "anthropic") return anthropicCapabilities();
+  // OpenCode: only the OpenAI-chat family drives the tool loop; every other
+  // family is streaming chat (honestly non-tool-calling, like Claude).
+  if (id === "opencode")
+    return familyForModelId(model) === "openai-chat" ? openAICompatibleCapabilities() : anthropicCapabilities();
+  return openAICompatibleCapabilities();
 }
 
 export function supportsToolCalling(id: ProviderId, model: string): boolean {

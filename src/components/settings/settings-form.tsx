@@ -77,6 +77,83 @@ function IntegrationStatus({
   );
 }
 
+
+/** OpenCode model browser: live catalog grouped Free / Other, click-to-select. */
+interface OpenCodeModelRow {
+  id: string;
+  name: string;
+  free: boolean;
+  family: string;
+  authRequired: boolean;
+}
+function OpenCodeModels({ value, onPick }: { value: string; onPick: (id: string) => void }) {
+  const [models, setModels] = useState<OpenCodeModelRow[] | null>(null);
+  const [source, setSource] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/opencode/models", { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+        if (!dead && j?.ok && Array.isArray(j.models)) {
+          setModels(j.models);
+          setSource(typeof j.source === "string" ? j.source : "");
+        } else if (!dead) setFailed(true);
+      } catch {
+        if (!dead) setFailed(true);
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, []);
+  if (failed)
+    return <p className="mt-1 text-[11px] text-white/35">Model list unavailable — type the model ID manually.</p>;
+  if (!models) return <p className="mt-1 font-mono text-[10.5px] text-white/35">Loading OpenCode models...</p>;
+  const free = models.filter((m) => m.free);
+  const rest = models.filter((m) => !m.free);
+  const renderRow = (m: OpenCodeModelRow) => (
+    <button
+      key={m.id}
+      type="button"
+      onClick={() => onPick(m.id)}
+      aria-pressed={value === m.id}
+      title={m.free ? `${m.name} — free, no key needed` : `${m.name} — needs your OpenCode key`}
+      className={cn(
+        "mx-focus mx-press rounded-lg border px-3 py-2 text-left transition-colors",
+        value === m.id
+          ? "border-white bg-white text-black"
+          : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/25 hover:text-white"
+      )}
+    >
+      <span className="block text-[12.5px] font-medium">{m.name}</span>
+      <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-[0.12em] opacity-70">
+        {m.free ? "FREE - no key" : "Key required"} - {m.family}
+      </span>
+    </button>
+  );
+  return (
+    <div className="mt-3">
+      <p className={LABEL}>OpenCode models{source === "live" ? "" : source ? ` (list: ${source})` : ""}</p>
+      {free.length > 0 && (
+        <>
+          <p className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">Free</p>
+          <div className="grid gap-2">{free.map(renderRow)}</div>
+        </>
+      )}
+      {rest.length > 0 && (
+        <>
+          <p className="mb-1.5 mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+            Other available models
+          </p>
+          <div className="grid gap-2">{rest.map(renderRow)}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function SettingsForm() {
   const router = useRouter();
   const session = useAuthStore((s) => s.session);
@@ -370,12 +447,12 @@ export function SettingsForm() {
               <span
                 aria-hidden="true"
                 className={
-                  baseURL.trim() && apiKey.trim() && model.trim()
+                  (provider === "opencode" ? !!model.trim() : !!(baseURL.trim() && apiKey.trim() && model.trim()))
                     ? "h-1.5 w-1.5 rounded-full bg-emerald-300"
                     : "h-1.5 w-1.5 rounded-full bg-white/20"
                 }
               />
-              {baseURL.trim() && apiKey.trim() && model.trim() ? "Configured" : "Not configured"}
+              {(provider === "opencode" ? !!model.trim() : !!(baseURL.trim() && apiKey.trim() && model.trim())) ? "Configured" : "Not configured"}
             </span>
             {apiKey.trim() && (
               <button
@@ -447,13 +524,22 @@ export function SettingsForm() {
                 </button>
               </div>
               <p id="set-key-hint" className="mt-1 text-[11px] text-white/35">
-                Stored only in this browser{provider === "custom" ? ", plus your encrypted vault on Save" : " and your encrypted vault on Save"} — never sent anywhere except your provider.
+                Stored only in this browser{provider === "custom" ? ", plus your encrypted vault on Save" : " and your encrypted vault on Save"} — never sent anywhere except your provider.{provider === "opencode" ? " Free OpenCode models need no key — leave it empty; paid ones need your OpenCode key." : ""}
               </p>
             </div>
             <div>
               <label htmlFor="set-model" className={LABEL}>Model ID</label>
               <input id="set-model" className={FIELD} value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" autoComplete="off" />
             </div>
+            {provider === "opencode" && (
+              <OpenCodeModels
+                value={model}
+                onPick={(id) => {
+                  setModel(id);
+                  flash(`Model set to ${id} ` + EM + ` press Save everything.`, "info");
+                }}
+              />
+            )}
           </div>
         </section>
 

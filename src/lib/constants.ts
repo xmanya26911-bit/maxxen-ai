@@ -339,4 +339,5 @@ export const CHAT_PROVIDERS = [
   { id: "anthropic", glyph: "✶", label: "Claude", model: "claude-3-5-haiku" },
   { id: "gemini", glyph: "⬢", label: "Gemini", model: "gemini-1.5-flash" },
   { id: "custom", glyph: "⬣", label: "Custom", model: "gpt-4o-mini" },
+  { id: "opencode", glyph: "⬡", label: "OpenCode", model: "mimo-v2.5-free" },
 ] as const;

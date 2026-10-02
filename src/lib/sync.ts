@@ -26,6 +26,7 @@ const SECRET_MAP: Record<string, string> = {
   maxxen_apikey_anthropic: "apiKeyAnthropic",
   maxxen_apikey_gemini: "apiKeyGemini",
   maxxen_apikey_custom: "apiKeyCustom",
+  maxxen_apikey_opencode: "apiKeyOpencode",
   maxxen_composio_key: "composioKey",
   maxxen_github_token: "githubToken",
   maxxen_vercel_token: "vercelToken",
