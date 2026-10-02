@@ -128,6 +128,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
   const [model, setModel] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [githubToken, setGithubToken] = useState("");
+  const [githubConnected, setGithubConnected] = useState(false);
   const [vercelToken, setVercelToken] = useState("");
   const [vercelProject, setVercelProject] = useState("maxxen");
   const [composioKey, setComposioKey] = useState("");
@@ -170,6 +171,13 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
       setApiKey(getProviderKey(prov));
       setModel(ls("maxxen_model"));
       setGithubToken(ls("maxxen_github_token"));
+      try {
+        const r = await fetch("/api/account/github", { headers: { "x-maxxen-session": s.token } });
+        const j = await r.json().catch(() => null);
+        setGithubConnected(Boolean(r.ok && j?.connected));
+      } catch {
+        setGithubConnected(false);
+      }
       setVercelToken(ls("maxxen_vercel_token"));
       setVercelProject(ls("maxxen_vercel_project") || "maxxen");
       setComposioKey(ls("maxxen_composio_key"));
@@ -185,6 +193,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
           setProvider(syncedProv);
           setApiKey(getProviderKey(syncedProv));
           setGithubToken(ls("maxxen_github_token"));
+          setGithubConnected(Boolean(ls("maxxen_github_token")));
           setVercelToken(ls("maxxen_vercel_token"));
           setVercelProject(ls("maxxen_vercel_project") || "maxxen");
           setComposioKey(ls("maxxen_composio_key"));
@@ -224,6 +233,21 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
     setProviderKey(provider, apiKey.trim());
     ls("maxxen_model", model.trim());
     ls("maxxen_github_token", githubToken.trim());
+    const sessionToken = useAuthStore.getState().session?.token ?? "";
+    if (sessionToken && githubToken.trim()) {
+      const r = await fetch("/api/account/github", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-maxxen-session": sessionToken },
+        body: JSON.stringify({ githubToken: githubToken.trim() }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        flash(j?.error || "GitHub account connection failed.", "err");
+        setSaving(false);
+        return;
+      }
+      setGithubConnected(true);
+    }
     ls("maxxen_vercel_token", vercelToken.trim());
     ls("maxxen_vercel_project", vercelProject.trim() || "maxxen");
     ls("maxxen_composio_key", composioKey.trim());
@@ -300,7 +324,10 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
   const disconnect = (which: "github" | "vercel" | "composio" | "endpoint") => {
     if (which === "github") {
       setGithubToken("");
+      setGithubConnected(false);
       ls("maxxen_github_token", "");
+      const sessionToken = useAuthStore.getState().session?.token ?? "";
+      if (sessionToken) void fetch("/api/account/github", { method: "DELETE", headers: { "x-maxxen-session": sessionToken } });
     } else if (which === "vercel") {
       setVercelToken("");
       ls("maxxen_vercel_token", "");
@@ -533,7 +560,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
           <ul aria-label="Integration connection states" className="mt-3 grid gap-1.5">
             <IntegrationStatus
               name="GitHub"
-              connected={githubToken.trim().length > 0}
+              connected={githubToken.trim().length > 0 || githubConnected}
               onRemove={githubToken.trim() ? () => disconnect("github") : undefined}
             />
             <IntegrationStatus
