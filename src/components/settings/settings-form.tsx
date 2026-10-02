@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Blocks, Brain, Check, Eye, EyeOff, KeyRound, Loader2, LogOut, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Blocks, Brain, Check, Eye, EyeOff, KeyRound, Loader2, LogOut, TriangleAlert, Wrench } from "lucide-react";
 import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
@@ -18,6 +18,7 @@ import {
   type ProviderId,
 } from "@/lib/endpoint";
 import { MemorySection } from "./memory-section";
+import { ToolsSection } from "./tools-section";
 
 function ls(key: string, value?: string): string {
   if (typeof window === "undefined") return "";
@@ -79,7 +80,7 @@ function IntegrationStatus({
 }
 
 
-export type SettingsView = "hub" | "endpoints" | "memory" | "integrations";
+export type SettingsView = "hub" | "endpoints" | "memory" | "integrations" | "tools";
 
 const VIEW_META: Record<SettingsView, { crumb: string; title: string; sub: string }> = {
   hub: {
@@ -102,12 +103,18 @@ const VIEW_META: Record<SettingsView, { crumb: string; title: string; sub: strin
     title: "Integrations",
     sub: "GitHub storage, Vercel deploys, Composio plugins. Vault sync and controls.",
   },
+  tools: {
+    crumb: "/ settings / tools",
+    title: "Tools & location",
+    sub: "Time, web search, page reading. Free building blocks the agent uses when it needs them.",
+  },
 };
 
 const HUB_CARDS = [
   { href: "/settings/endpoints", icon: KeyRound, title: "AI endpoints", desc: "Providers, keys and models." },
   { href: "/settings/memory", icon: Brain, title: "Memory", desc: "View, search, edit, forget." },
   { href: "/settings/integrations", icon: Blocks, title: "Integrations", desc: "GitHub, Vercel, Composio, vault." },
+  { href: "/settings/tools", icon: Wrench, title: "Tools & location", desc: "Search, timezone, location." },
 ] as const;
 
 export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
@@ -511,6 +518,10 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
 
         {view === "memory" && (
         <MemorySection />
+        )}
+
+        {view === "tools" && (
+        <ToolsSection />
         )}
 
         {view === "integrations" && (

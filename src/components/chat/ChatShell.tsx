@@ -335,6 +335,53 @@ export default function ChatShell() {
     setPinned(true);
   }
 
+/** Browser timezone (Settings override, else auto-detected). Never throws. */
+function readTimezonePref(): string {
+  try {
+    const saved = (window.localStorage.getItem("maxxen_timezone") || "").trim();
+    if (saved) return saved.slice(0, 60);
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+/** Location pref as a JSON string, or undefined when disabled/unset. Coords only ever exist here if the user tapped precise location. */
+function readLocationPref(): string | undefined {
+  try {
+    if (window.localStorage.getItem("maxxen_location_enabled") !== "1") return undefined;
+    const label = (window.localStorage.getItem("maxxen_location_label") || "").trim();
+    if (!label) return undefined;
+    const lat = Number(window.localStorage.getItem("maxxen_location_lat"));
+    const lon = Number(window.localStorage.getItem("maxxen_location_lon"));
+    const pref: Record<string, unknown> = {
+      enabled: true,
+      label: label.slice(0, 120),
+      source: window.localStorage.getItem("maxxen_location_source") || "manual",
+      updatedAt: "",
+    };
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      pref.lat = lat;
+      pref.lon = lon;
+    }
+    return JSON.stringify(pref);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Search prefs (enabled by default; operator endpoint still required server-side). */
+function readSearchPref(): { enabled: boolean; maxResults: number } {
+  try {
+    return {
+      enabled: window.localStorage.getItem("maxxen_search_enabled") !== "0",
+      maxResults: Math.min(10, Math.max(1, parseInt(window.localStorage.getItem("maxxen_search_max") || "5", 10) || 5)),
+    };
+  } catch {
+    return { enabled: true, maxResults: 5 };
+  }
+}
+
 /** User-memory local mirror (shared across conversations). Never throws. */
 function readUserMemoryCacheSafe(): unknown[] {
   try {
@@ -511,6 +558,9 @@ function triggerMemoryExtract(
             mode: requestMode,
             ...endpoint,
             userMemories: readUserMemoryCacheSafe(),
+            timezone: readTimezonePref(),
+            userLocation: readLocationPref(),
+            search: readSearchPref(),
           }),
           signal: controller.signal,
         });
@@ -665,6 +715,9 @@ function triggerMemoryExtract(
             composioUserId: store().getItem("maxxen_composio_user_id") || undefined,
             memory: readMemoryCacheSafe(convId),
             userMemories: readUserMemoryCacheSafe(),
+            timezone: readTimezonePref(),
+            userLocation: readLocationPref(),
+            search: readSearchPref(),
           }),
           signal: controller.signal,
         });
