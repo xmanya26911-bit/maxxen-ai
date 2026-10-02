@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  buildIndexEntryForTestHelperCheck,
-  chatFilePath,
+import {  chatFilePath,
   indexEntryFor,
   isDeletableChatPath,
   mergeIndexEntry,
@@ -10,7 +8,6 @@ import {
   toConversationFile,
 } from "@/lib/chat-sync";
 
-void buildIndexEntryForTestHelperCheck;
 
 describe("chat file shape", () => {
   it("strips blocks, caps messages and content", () => {
