@@ -321,6 +321,27 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
     }
   };
 
+  const connectGithub = async () => {
+    const sessionToken = useAuthStore.getState().session?.token ?? "";
+    if (!sessionToken) {
+      flash("Sign in to MAXXEN first.", "err");
+      return;
+    }
+    try {
+      const r = await fetch("/api/auth/github/start", {
+        headers: { "x-maxxen-session": sessionToken },
+      });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || typeof j?.url !== "string") {
+        flash(j?.error || "GitHub OAuth could not start.", "err");
+        return;
+      }
+      window.location.assign(j.url);
+    } catch {
+      flash("GitHub OAuth could not start.", "err");
+    }
+  };
+
   const disconnect = (which: "github" | "vercel" | "composio" | "endpoint") => {
     if (which === "github") {
       setGithubToken("");
@@ -561,7 +582,12 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
             <IntegrationStatus
               name="GitHub"
               connected={githubToken.trim().length > 0 || githubConnected}
-              onRemove={githubToken.trim() ? () => disconnect("github") : undefined}
+              onRemove={githubToken.trim() || githubConnected ? () => disconnect("github") : undefined}
+              action={
+                <button type="button" onClick={connectGithub} className="mx-focus font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white">
+                  {githubConnected ? "Reconnect" : "Connect"}
+                </button>
+              }
             />
             <IntegrationStatus
               name="Vercel"
@@ -586,9 +612,16 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
             />
           </ul>
           <div className="mt-4 grid gap-3">
-            <div>
-              <label htmlFor="set-gh" className={LABEL}>GitHub token (repo scope)</label>
-              <input id="set-gh" className={FIELD} value={githubToken} onChange={(e) => setGithubToken(e.target.value)} placeholder="ghp_…" type="password" autoComplete="off" />
+            <div className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3.5 py-3">
+              <p className="text-[12.5px] font-medium text-white/80">GitHub storage</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/40">
+                Connect GitHub with OAuth. MAXXEN verifies write access to the private <code className="font-mono text-white/60">maxxen-data</code> repository before saving the encrypted connection.
+              </p>
+              {githubConnected ? (
+                <p className="mt-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-emerald-200/70">OAuth connected · maxxen-data write access verified</p>
+              ) : (
+                <button type="button" onClick={connectGithub} className={BTN_GHOST}>Connect GitHub</button>
+              )}
             </div>
             <div className="grid gap-3 sm:grid-cols-[1fr_160px]">
               <div>
