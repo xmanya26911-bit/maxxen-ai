@@ -107,7 +107,7 @@ export function budgetConversation(
   const attachmentBlocks: string[] = [];
   let droppedAttachments = 0;
   for (const a of opts.attachments ?? []) {
-    const block = `Attachment ${a.name.slice(0, 80)}:\n${a.text.slice(0, 3000)}`;
+    const block = `Attachment ${a.name.slice(0, 80)}:\n${a.text.slice(0, 6000)}`;
     const c = estimateTokens(block);
     if (used + c <= budget) {
       attachmentBlocks.push(block);
