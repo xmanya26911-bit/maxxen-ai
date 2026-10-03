@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { useChatStore } from "./store";
+import type { Source } from "@/lib/citations";
+import type { Attachment } from "@/lib/attachments";
 import { useAuthStore } from "@/lib/auth-store";
 import {
   CHAT_INDEX_PATH,
@@ -184,8 +186,8 @@ export function useChatSync(): void {
                 content: String(m.content).slice(0, 12000),
                 createdAt: Number(m.createdAt) || Date.now(),
                 ...(m.failed ? { failed: true } : {}),
-                ...(Array.isArray(m.sources) ? { sources: m.sources.filter((x: unknown) => x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string" && typeof (x as { title?: unknown }).title === "string" && typeof (x as { url?: unknown }).url === "string").slice(0, 10) } : {}),
-                ...(Array.isArray(m.attachments) ? { attachments: m.attachments.filter((a: unknown) => a && typeof a === "object" && (a as { kind?: unknown }).kind === "text" && typeof (a as { text?: unknown }).text === "string").map((a: unknown) => { const x = a as { id?: unknown; name?: unknown; mimeType?: unknown; size?: unknown; text?: unknown; truncated?: unknown }; return { id: String(x.id ?? "att_" + Math.random().toString(36).slice(2)).slice(0, 64), name: String(x.name ?? "file").slice(0, 120), mimeType: String(x.mimeType ?? "text/plain").slice(0, 120), size: Number(x.size) || 0, kind: "text" as const, text: String(x.text).slice(0, 50000), ...(x.truncated ? { truncated: true } : {}) }; }).slice(0, 5) } : {}),
+                ...(Array.isArray(m.sources) ? { sources: m.sources.filter((x: unknown) => x && typeof x === "object" && typeof (x as { id?: unknown }).id === "string" && typeof (x as { title?: unknown }).title === "string" && typeof (x as { url?: unknown }).url === "string").slice(0, 10) as Source[] } : {}),
+                ...(Array.isArray(m.attachments) ? { attachments: m.attachments.filter((a: unknown) => a && typeof a === "object" && (a as { kind?: unknown }).kind === "text" && typeof (a as { text?: unknown }).text === "string").map((a: unknown) => { const x = a as { id?: unknown; name?: unknown; mimeType?: unknown; size?: unknown; text?: unknown; truncated?: unknown }; return { id: String(x.id ?? "att_" + Math.random().toString(36).slice(2)).slice(0, 64), name: String(x.name ?? "file").slice(0, 120), mimeType: String(x.mimeType ?? "text/plain").slice(0, 120), size: Number(x.size) || 0, kind: "text" as const, text: String(x.text).slice(0, 50000), ...(x.truncated ? { truncated: true } : {}) }; }).slice(0, 5) as Attachment[] } : {}),
               })),
           });
         }
