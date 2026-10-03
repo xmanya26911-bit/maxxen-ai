@@ -148,9 +148,19 @@ export function searchConversations<
 >(convs: T[], query: string): T[] {
   const q = query.trim().toLowerCase();
   if (!q) return convs;
-  return convs.filter(
-    (c) =>
-      c.title.toLowerCase().includes(q) ||
-      (c.messages ?? []).some((m) => typeof m.content === "string" && m.content.toLowerCase().includes(q))
-  );
+  const terms = Array.from(new Set(q.split(/\\s+/).filter((term) => term.length > 1)));
+  return convs
+    .map((c, index) => {
+      const haystack = [c.title, ...(c.messages ?? []).map((m) => m.content)].join(" ").toLowerCase();
+      let score = 0;
+      for (const term of terms) {
+        if (c.title.toLowerCase().includes(term)) score += 4;
+        score += Math.min(5, haystack.split(term).length - 1);
+      }
+      if (haystack.includes(q)) score += 6;
+      return { c, score, index };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((x) => x.c);
 }
