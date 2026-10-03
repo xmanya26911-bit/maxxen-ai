@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { setGithubTokenCookie } from "@/lib/github-token-cookie";
 import { verifySession } from "@/lib/session";
 import crypto from "node:crypto";
+import { serverSecret } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const STATE_COOKIE = "maxxen-github-oauth-state";
-const SESSION_COOKIE = "maxxen-github-oauth-session";
+const TRANSACTION_COOKIE = "maxxen-github-oauth-tx";
 const TARGET_REPO = "maxxen-data";
 
 function publicOrigin(req: Request): string {
@@ -33,18 +33,32 @@ export async function GET(req: Request) {
     return match ? decodeURIComponent(match[1]) : "";
   };
 
-  const expectedState = readCookie(STATE_COOKIE);
-  const sessionToken = readCookie(SESSION_COOKIE);
+  const transaction = readCookie(TRANSACTION_COOKIE);
+  let email = "";
+  let expectedState = "";
+  try {
+    const raw = Buffer.from(transaction, "base64url").toString("utf8");
+    const parts = raw.split("|");
+    if (parts.length !== 4) throw new Error("invalid transaction");
+    const txEmail = parts[0];
+    const exp = parts[1];
+    const txState = parts[2];
+    const sig = parts[3];
+    const payload = txEmail + "|" + exp + "|" + txState;
+    const expectedSig = crypto.createHmac("sha256", serverSecret()).update(payload).digest("hex");
+    if (expectedSig.length !== sig.length || !crypto.timingSafeEqual(Buffer.from(expectedSig), Buffer.from(sig))) throw new Error("invalid signature");
+    if (!txEmail || !txState || !Number.isFinite(Number(exp)) || Date.now() > Number(exp)) throw new Error("expired transaction");
+    email = txEmail;
+    expectedState = txState;
+  } catch {
+    return redirect(req, { github: "error", message: "Your GitHub OAuth session expired. Please start the connection again." });
+  }
 
   if (oauthError) return redirect(req, { github: "error", message: "GitHub authorization was cancelled." });
   if (!code || !state || !expectedState || state.length !== expectedState.length ||
       !crypto.timingSafeEqual(Buffer.from(state), Buffer.from(expectedState))) {
     return redirect(req, { github: "error", message: "Invalid GitHub OAuth state. Please try again." });
   }
-
-  const email = verifySession(sessionToken);
-  if (!email) return redirect(req, { github: "error", message: "Your MAXXEN session expired. Please sign in again." });
-
   const clientId = process.env.GITHUB_CLIENT_ID || "";
   const clientSecret = process.env.GITHUB_CLIENT_SECRET || "";
   if (!clientId || !clientSecret) {
@@ -115,8 +129,7 @@ export async function GET(req: Request) {
 
     const res = redirect(req, { github: "connected" });
     setGithubTokenCookie(res, accessToken);
-    res.cookies.delete(STATE_COOKIE);
-    res.cookies.delete(SESSION_COOKIE);
+    res.cookies.delete(TRANSACTION_COOKIE);
     return res;
   } catch {
     return redirect(req, { github: "error", message: "GitHub connection failed. Please try again." });
