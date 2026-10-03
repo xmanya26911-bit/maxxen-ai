@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { linkGithubToken } from "@/lib/account-vault";
-import { serverSecret, verifySession } from "@/lib/session";
+import { verifySession } from "@/lib/session";
 import crypto from "node:crypto";
 
 export const runtime = "nodejs";
