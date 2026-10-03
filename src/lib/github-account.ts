@@ -1,4 +1,4 @@
-import { getLinkedGithubToken } from "@/lib/account-vault";
+import { getGithubTokenCookie } from "@/lib/github-token-cookie";
 import { sessionEmail } from "@/lib/session";
 
 export async function resolveGithubToken(
@@ -9,8 +9,6 @@ export async function resolveGithubToken(
     return supplied.trim();
   }
 
-  const email = sessionEmail(req);
-  if (!email) return null;
-
-  return getLinkedGithubToken(email);
+  if (!sessionEmail(req)) return null;
+  return getGithubTokenCookie(req);
 }
