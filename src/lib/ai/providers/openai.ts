@@ -77,7 +77,7 @@ export const openaiAdapter: ProviderAdapter = {
           : [
               ...(request.system ? [{ role: "system" as const, content: request.system }] : []),
               ...request.messages,
-            ]) as unknown as Parameters<typeof client.chat.completions.create>["messages"],
+            ]) as any,
         temperature: request.temperature ?? 0.7,
         stream: true,
       })) as unknown as AsyncIterable<OpenAIDeltaChunk>;
