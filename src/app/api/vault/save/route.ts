@@ -8,10 +8,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export async function POST(req: Request) {
   try {
-    const { session, githubToken, prefs, secrets, deletePrefs, deleteSecrets, wipe } = await req.json();
+    const { session, prefs, secrets, deletePrefs, deleteSecrets, wipe } = await req.json();
     const email = verifySession(String(session || ""));
     if (!email) return NextResponse.json({ error: "Session expired. Log in again." }, { status: 401 });
-    const resolvedToken = typeof githubToken === "string" && githubToken.trim() ? githubToken.trim() : getGithubTokenCookie(req);
+    const resolvedToken = getGithubTokenCookie(req);
     if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
 
     const oct = new Octokit({ auth: resolvedToken });
