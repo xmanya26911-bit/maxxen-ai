@@ -28,7 +28,7 @@ import {
   normalizeUpstreamError,
   type OpenCodeApiFamily,
 } from "./opencode-catalog";
-import { anthropicCapabilities, openAICompatibleCapabilities } from "../capabilities";
+import { nonToolCallingCapabilities, openAICompatibleCapabilities } from "../capabilities";
 import {
   ProviderError,
   type CapabilityDescriptor,
