@@ -37,7 +37,7 @@ describe("resolveEndpoint (shared chat/agent preamble)", () => {
   });
 
   it("assembles system blocks in order, dropping empties", () => {
-    expect(assembleSystemPrompt(["a", "", null, "b"])).toBe("a\\n\\nb");
+    expect(assembleSystemPrompt(["a", "", null, "b"])).toBe("a\n\nb");
     expect(assembleSystemPrompt(["  spaced  "])).toBe("spaced");
     expect(assembleSystemPrompt([false, undefined])).toBe("");
   });
