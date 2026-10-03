@@ -388,7 +388,7 @@ export async function POST(req: Request) {
             send({ type: "tool.start", callId: call.id, tool: def.id });
             let res;
             try {
-              res = await def.run(args, ctx);
+              res = await def.run(args, toolCtx);
             } catch (e: any) {
               res = { ok: false as const, summary: e?.message || "Tool crashed." };
             }
