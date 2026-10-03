@@ -9,7 +9,8 @@ import {
   parseConfigFile,
   MAX_FILE_BYTES,
   type DirListing,
-  type SupportedDir,\n  type ProjectContextFile,
+  type SupportedDir,
+  type ProjectContextFile,
 } from "@/lib/project-context";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
