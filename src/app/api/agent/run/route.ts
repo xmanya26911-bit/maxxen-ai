@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     githubToken,
     vercelToken,
     composioKey,
-    userConfirmed,
+    confirmedTool,
     email,
     composioUserId,
     timezone: typeof timezone === "string" ? timezone.slice(0, 60) : undefined,

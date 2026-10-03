@@ -172,7 +172,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
       setModel(ls("maxxen_model"));
       setGithubToken(ls("maxxen_github_token"));
       try {
-        const r = await fetch("/api/account/github", { headers: { "x-maxxen-session": s.token } });
+        const r = await fetch("/api/account/github", { headers: s.token ? { "x-maxxen-session": s.token } : {} });
         const j = await r.json().catch(() => null);
         setGithubConnected(Boolean(r.ok && j?.connected));
       } catch {

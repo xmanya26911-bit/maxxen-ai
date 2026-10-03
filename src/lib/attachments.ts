@@ -111,15 +111,16 @@ export function attachmentTextBlock(name: string, text: string, truncated?: bool
 export function historyWithAttachments(
   history: { role: string; content: string }[],
   attachments: Attachment[]
-): { history: { role: string; content: string }[]; images: ImagePayload[] } {
+): { history: { role: "user" | "assistant"; content: string }[]; images: ImagePayload[] } {
   const texts = attachments.filter((a) => a.kind === "text" && typeof a.text === "string" && a.text);
   const images = attachments
     .filter((a) => a.kind === "image" && typeof a.dataUrl === "string" && a.dataUrl.startsWith("data:image/"))
     .slice(0, MAX_IMAGES_PER_REQUEST)
     .map((a) => ({ name: a.name, dataUrl: a.dataUrl as string }));
-  if (!texts.length) return { history, images };
+  const normalizedHistory = history.map((m) => ({ ...m, role: m.role === "assistant" ? ("assistant" as const) : ("user" as const) }));
+  if (!texts.length) return { history: normalizedHistory, images };
   const block = texts.map((a) => attachmentTextBlock(a.name, a.text as string, a.truncated)).join("\n\n");
-  const out = history.map((m) => ({ ...m }));
+  const out = normalizedHistory.map((m) => ({ ...m }));
   const lastUser = [...out].reverse().find((m) => m.role === "user");
   if (lastUser) lastUser.content += `\n\n${block}`;
   else out.push({ role: "user", content: block });

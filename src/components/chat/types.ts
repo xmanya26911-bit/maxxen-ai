@@ -4,6 +4,7 @@
  * and the artifact workspace pane.
  */
 import type { Attachment } from "@/lib/attachments";
+import type { Source } from "@/lib/citations";
 import type { CHAT_MODES } from "@/lib/constants";
 
 /** Chat mode ids — mirrors CHAT_MODES in src/lib/constants.ts. */

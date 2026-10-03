@@ -76,6 +76,17 @@ export interface PermissionRequestEvent {
 }
 
 /** An artifact was added/updated/removed in the workspace. */
+export interface SourceAddEvent {
+  type: "source.add";
+  id: string;
+  title: string;
+  url: string;
+  domain?: string;
+  snippet?: string;
+  publishedAt?: string;
+  kind: "snippet" | "page";
+}
+
 export interface ArtifactUpdateEvent {
   type: "artifact.update";
   op: "add" | "update" | "remove";
@@ -113,6 +124,7 @@ export type MaxxenEvent =
   | ToolDeltaEvent
   | ToolResultEvent
   | PermissionRequestEvent
+  | SourceAddEvent
   | ArtifactUpdateEvent
   | DeploymentUpdateEvent
   | ErrorEvent

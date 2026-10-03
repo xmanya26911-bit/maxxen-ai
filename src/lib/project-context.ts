@@ -112,10 +112,11 @@ export function detectDirs(entries: { path: string; type: string }[]): Supported
 }
 
 /** Candidate config files under a supported dir, in a safe read order. */
-export function candidateFiles(entries: DirListing[], dir: SupportedDir): DirListing[] {
+export function candidateFiles(entries: { path: string; type: string; size?: number }[], dir: SupportedDir): DirListing[] {
   const prefix = `${dir}/`;
   return entries
     .filter((e) => e.type === "file" && e.path.startsWith(prefix) && isSafePath(e.path))
+    .map((e) => ({ path: e.path, type: e.type === "file" ? ("file" as const) : ("dir" as const), ...(typeof e.size === "number" ? { size: e.size } : {}) }))
     .filter((e) => isReadableConfig(e.path, e.size))
     .slice(0, MAX_FILES);
 }
