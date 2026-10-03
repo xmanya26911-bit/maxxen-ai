@@ -4,6 +4,7 @@ import { GitHubMemoryStore, octokitMemoryIO } from "@/lib/user-memory/store";
 import { isMemoryCategory, sanitizeMemory, type UserMemory } from "@/lib/user-memory/types";
 import { scanForSecrets } from "@/lib/secret-scan";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
+import { resolveGithubToken } from "@/lib/github-account";
 
 /**
  * POST /api/user-memory/save — UI ops (edit/delete/create) on user memories.
@@ -33,15 +34,14 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { githubToken, ops } = body;
-  if (typeof githubToken !== "string" || !githubToken.trim()) {
-    return NextResponse.json({ error: "Add YOUR GitHub token on /settings → Storage first." }, { status: 400 });
-  }
+  const resolvedToken = await resolveGithubToken(req, body.githubToken);
+  if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
+  const { ops } = body;
   if (!Array.isArray(ops) || !ops.length || ops.length > 50) {
     return NextResponse.json({ error: "ops must be 1–50 operations." }, { status: 400 });
   }
   try {
-    const oct = new Octokit({ auth: githubToken.trim() });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
     const results: { action: string; id?: string; ok: boolean }[] = [];
