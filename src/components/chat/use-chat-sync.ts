@@ -178,7 +178,7 @@ export function useChatSync(): void {
             updatedAt: Number(file.updatedAt) || Date.now(),
             messages: file.messages
               .filter((m: unknown) => m && typeof (m as { content?: unknown }).content === "string")
-              .map((m: { id?: unknown; role?: unknown; content?: unknown; createdAt?: unknown; failed?: unknown }) => ({
+              .map((m: { id?: unknown; role?: unknown; content?: unknown; createdAt?: unknown; failed?: unknown; sources?: unknown; attachments?: unknown }) => ({
                 id: String(m.id ?? `${activeId}-${Math.random().toString(36).slice(2)}`),
                 role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
                 content: String(m.content).slice(0, 12000),
