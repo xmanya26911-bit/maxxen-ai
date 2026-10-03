@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
+    const { Octokit } = await import("octokit");
     if (!sessionEmail(req)) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     const token = getGithubTokenCookie(req);
     if (!token) return NextResponse.json({ ok: true, connected: false });
@@ -26,6 +27,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const { Octokit } = await import("octokit");
     if (!sessionEmail(req)) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     const body = await req.json().catch(() => ({}));
     const token = typeof body?.githubToken === "string" ? body.githubToken.trim() : "";
