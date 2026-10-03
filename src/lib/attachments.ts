@@ -119,7 +119,7 @@ export function historyWithAttachments(
     .map((a) => ({ name: a.name, dataUrl: a.dataUrl as string }));
   if (!texts.length) return { history, images };
   const block = texts.map((a) => attachmentTextBlock(a.name, a.text as string, a.truncated)).join("\n\n");
-  const out = history.map((m) => ({ ...m }));
+  const out = history.map((m) => ({ ...m, role: m.role === "assistant" ? ("assistant" as const) : ("user" as const) }));
   const lastUser = [...out].reverse().find((m) => m.role === "user");
   if (lastUser) lastUser.content += `\n\n${block}`;
   else out.push({ role: "user", content: block });
