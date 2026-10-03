@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, repo: `${me.login}/${repo.trim()}`, detected: [], files: [], omitted: [], context: "" });
     }
     const omitted: string[] = [];
-    const files = [];
+    const files: ProjectContextFile[] = [];
     for (const dir of detected) {
       for (const cand of candidateFiles(entries, dir as SupportedDir)) {
         if (!DIRS.has(cand.path.split("/")[0])) continue;
