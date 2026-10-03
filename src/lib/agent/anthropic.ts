@@ -202,11 +202,14 @@ export async function accumulateAnthropicTurn(
       if (typeof d?.stop_reason === "string" && d.stop_reason) stopReason = d.stop_reason;
     }
   };
+  let aborted = false;
+  const abort = () => { aborted = true; void reader.cancel().catch(() => undefined); };
+  signal?.addEventListener("abort", abort, { once: true });
   try {
     for (;;) {
+      if (aborted || signal?.aborted) break;
       const { done, value } = await reader.read();
-      if (done) break;
-      if (signal?.aborted) break;
+      if (done || aborted || signal?.aborted) break;
       buf += decoder.decode(value, { stream: true });
       const parts = buf.split("\n\n");
       buf = parts.pop() ?? "";
