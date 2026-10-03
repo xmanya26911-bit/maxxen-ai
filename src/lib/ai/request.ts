@@ -76,7 +76,7 @@ export const DEFAULT_POLICY: RunPolicy = { maxSteps: 6, maxToolCalls: 24, timeou
 
 function clampInt(v: unknown, dflt: number, min: number, max: number): number {
   const n = typeof v === "number" ? v : Number(v);
-  if (!Number.isFinite(n)) return dflt;
+  if (!Number.isFinite(n) || n <= 0) return dflt;
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
