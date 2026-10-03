@@ -109,9 +109,9 @@ export function attachmentTextBlock(name: string, text: string, truncated?: bool
 
 /** Split outgoing attachments: texts fold into history, images go native. */
 export function historyWithAttachments(
-  history: { role: string; content: string }[],
+  history: { role: "user" | "assistant"; content: string }[],
   attachments: Attachment[]
-): { history: { role: string; content: string }[]; images: ImagePayload[] } {
+): { history: { role: "user" | "assistant"; content: string }[]; images: ImagePayload[] } {
   const texts = attachments.filter((a) => a.kind === "text" && typeof a.text === "string" && a.text);
   const images = attachments
     .filter((a) => a.kind === "image" && typeof a.dataUrl === "string" && a.dataUrl.startsWith("data:image/"))
