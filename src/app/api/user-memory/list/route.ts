@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
 import { GitHubMemoryStore, octokitMemoryIO } from "@/lib/user-memory/store";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
+import { resolveGithubToken } from "@/lib/github-account";
 
 /**
  * POST /api/user-memory/list — all user memories from the caller's own
@@ -23,12 +24,10 @@ export async function POST(req: Request) {
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
-  const { githubToken } = body;
-  if (typeof githubToken !== "string" || !githubToken.trim()) {
-    return NextResponse.json({ error: "Add YOUR GitHub token on /settings → Storage first." }, { status: 400 });
-  }
+  const resolvedToken = await resolveGithubToken(req, body.githubToken);
+  if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
   try {
-    const oct = new Octokit({ auth: githubToken.trim() });
+    const oct = new Octokit({ auth: resolvedToken });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const store = new GitHubMemoryStore(octokitMemoryIO(oct, me.login, "maxxen-data"));
     const memories = await store.getAll();
