@@ -44,7 +44,7 @@ function opencodeCapabilities(model: string): CapabilityDescriptor {
   // verified against this family. Other families stream chat only.
   return familyForModelId(model) === "openai-chat"
     ? openAICompatibleCapabilities()
-    : anthropicCapabilities();
+    : nonToolCallingCapabilities();
 }
 
 function withTimeout(upstream: AbortSignal | undefined): { signal: AbortSignal; cancel: () => void } {
