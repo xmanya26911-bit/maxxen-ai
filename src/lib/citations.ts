@@ -102,6 +102,6 @@ export function linkifyCitations(content: string, sources?: Source[]): string {
     const s = byId.get(`s${n}`);
     if (!s) return m;
     const title = s.title.replace(/"/g, "");
-    return `[${m}](${s.url} "${title}")`;
+    return `${m}(${s.url} "${title}")`;
   });
 }
