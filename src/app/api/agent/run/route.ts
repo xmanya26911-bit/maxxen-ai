@@ -13,6 +13,7 @@ import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 import { collectRunSources, type Source } from "@/lib/citations";
 import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
 import { sanitizeImagePayload, withAnthropicImageParts, withOpenAIImageParts } from "@/lib/attachments";
+import { planForIntent } from "@/lib/runtime/agent-plan";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
@@ -113,6 +114,7 @@ export async function POST(req: Request) {
   // Maxxen runtime: capabilities probed live, tool registry filtered to what
   // is actually usable, one stable identity for every model.
   const runtime = await buildRuntime(ctx, { providerLabel: typeof provider === "string" && provider ? provider : "custom", mode: "agent", userText: latestUserMessage || "" });
+  const plannedTasks = planForIntent(runtime.intent, latestUserMessage || "");
   const openaiTools = toOpenAITools(runtime.tools) as any;
 
   const stream = new ReadableStream({
@@ -177,7 +179,7 @@ export async function POST(req: Request) {
             /* compaction failed — budgeted window still bounds */
           }
         }
-        activity("Planning", "planning");
+        activity(`Planning: ${plannedTasks.map((t) => t.title).join(" → ")}`, "planning");
         {
           const live = new Set(runtime.tools.map((t) => t.kind));
           const names: string[] = [];
