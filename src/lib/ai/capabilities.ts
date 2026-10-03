@@ -43,3 +43,7 @@ export function openAICompatibleCapabilities(): CapabilityDescriptor {
 export function anthropicCapabilities(): CapabilityDescriptor {
   return { ...base(), toolCalling: true };
 }
+
+export function nonToolCallingCapabilities(): CapabilityDescriptor {
+  return { ...base(), toolCalling: false };
+}
