@@ -14,6 +14,7 @@ import { collectRunSources, type Source } from "@/lib/citations";
 import { buildRequestContext, duplicateCallKey } from "@/lib/assistant-tools";
 import { sanitizeImagePayload, withAnthropicImageParts, withOpenAIImageParts } from "@/lib/attachments";
 import { planForIntent } from "@/lib/runtime/agent-plan";
+import { resolveGithubToken } from "@/lib/github-account";
 
 // REAL agent loop: MODEL → PLAN → TOOL → EXECUTE → RESULT → MODEL → … → FINAL.
 // Streams CANONICAL events (lib/streaming) — the same protocol /api/chat uses:
@@ -99,8 +100,9 @@ export async function POST(req: Request) {
           maxResults: Math.min(10, Math.max(1, Math.floor(Number((search as { maxResults?: unknown }).maxResults) || 5))),
         }
       : undefined;
+  const authenticatedGithubToken = await resolveGithubToken(req, githubToken);
   const ctx: Ctx = {
-    githubToken,
+    githubToken: authenticatedGithubToken || undefined,
     vercelToken,
     composioKey,
     confirmedTool,
@@ -388,7 +390,7 @@ export async function POST(req: Request) {
             send({ type: "tool.start", callId: call.id, tool: def.id });
             let res;
             try {
-              res = await def.run(args, toolCtx);
+              res = await def.run(args, ctx);
             } catch (e: any) {
               res = { ok: false as const, summary: e?.message || "Tool crashed." };
             }
