@@ -58,16 +58,16 @@ export async function persistConversation(id: string): Promise<void> {
     if (!t && !useAuthStore.getState().session?.token) return;
     const file = toConversationFile(conv);
     const saved = await postJSON("/api/github/save", {
-      githubToken: t,
+      
       path: chatFilePath(id),
       content: file,
       message: `maxxen: sync chat ${file.title.slice(0, 60)}`,
     });
     if (!saved?.ok) return;
-    const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
+    const idx = await postJSON("/api/github/file", { path: CHAT_INDEX_PATH });
     const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
     const next = mergeIndexEntry(entries, indexEntryFor(file));
-    await postJSON("/api/github/save", { githubToken: t, path: CHAT_INDEX_PATH, content: next, message: "maxxen: sync chat index" });
+    await postJSON("/api/github/save", { path: CHAT_INDEX_PATH, content: next, message: "maxxen: sync chat index" });
   } catch {
     /* offline — local copy remains truth */
   }
@@ -78,12 +78,12 @@ export async function syncDeleteConv(id: string): Promise<void> {
   try {
     const t = token();
     if (!t && !useAuthStore.getState().session?.token) return;
-    await postJSON("/api/github/delete", { githubToken: t, path: chatFilePath(id) });
-    const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
+    await postJSON("/api/github/delete", { path: chatFilePath(id) });
+    const idx = await postJSON("/api/github/file", { path: CHAT_INDEX_PATH });
     const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
     const next = removeIndexEntry(entries, id);
     if (next.length !== entries.length) {
-      await postJSON("/api/github/save", { githubToken: t, path: CHAT_INDEX_PATH, content: next, message: "maxxen: sync chat index" });
+      await postJSON("/api/github/save", { path: CHAT_INDEX_PATH, content: next, message: "maxxen: sync chat index" });
     }
   } catch {
     /* ignore */
@@ -130,7 +130,7 @@ export function useChatSync(): void {
             await postJSON("/api/account/github", { githubToken: t });
           }
         }
-        const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
+        const idx = await postJSON("/api/github/file", { path: CHAT_INDEX_PATH });
         const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
         if (!entries.length) return;
         const state = useChatStore.getState();
@@ -179,7 +179,7 @@ export function useChatSync(): void {
       try {
         const t = token();
         if (!t && !useAuthStore.getState().session?.token) return;
-        const j = await postJSON("/api/github/file", { githubToken: t, path: chatFilePath(activeId) });
+        const j = await postJSON("/api/github/file", { path: chatFilePath(activeId) });
         const raw = typeof j?.text === "string" ? j.text : "";
         const file = raw ? JSON.parse(raw) : null;
         if (file && Array.isArray(file.messages) && file.messages.length) {
