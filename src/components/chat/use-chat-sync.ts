@@ -114,12 +114,22 @@ export function useChatSync(): void {
     (async () => {
       try {
             const t = token();
+        const session = useAuthStore.getState().session?.token || "";
+        if (!session) return;
+
+        // OAuth/PAT credentials are stored in the HttpOnly account cookie.
+        // Only migrate a legacy localStorage token when the account is not
+        // already connected. This prevents an old token from overwriting a
+        // freshly authorized OAuth credential.
         if (t) {
-          // One-time migration: bind an existing device-local GitHub token to
-          // the verified MAXXEN account so other devices can reuse it.
-          await postJSON("/api/account/github", { githubToken: t });
+          const status = await fetch("/api/account/github", {
+            method: "GET",
+            headers: { "x-maxxen-session": session },
+          }).then((r) => r.json().catch(() => ({})));
+          if (!status?.connected) {
+            await postJSON("/api/account/github", { githubToken: t });
+          }
         }
-        if (!t && !useAuthStore.getState().session?.token) return;
         const idx = await postJSON("/api/github/file", { githubToken: t, path: CHAT_INDEX_PATH });
         const entries = parseIndex(typeof idx?.text === "string" ? idx.text : "");
         if (!entries.length) return;
