@@ -170,7 +170,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
       setBaseURL(ls("maxxen_baseurl"));
       setApiKey(getProviderKey(prov));
       setModel(ls("maxxen_model"));
-      setGithubToken(ls("maxxen_github_token"));
+      setGithubToken("");
       try {
         const r = await fetch("/api/account/github", { headers: s.token ? { "x-maxxen-session": s.token } : {} });
         const j = await r.json().catch(() => null);
@@ -192,7 +192,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
           const syncedProv = normalizeProvider(ls("maxxen_provider"));
           setProvider(syncedProv);
           setApiKey(getProviderKey(syncedProv));
-          setGithubToken(ls("maxxen_github_token"));
+          setGithubToken("");
           // OAuth is stored in an HttpOnly cookie, so localStorage must never
           // overwrite the server-verified connection state after a vault pull.
           try {
@@ -594,8 +594,8 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
           <ul aria-label="Integration connection states" className="mt-3 grid gap-1.5">
             <IntegrationStatus
               name="GitHub"
-              connected={githubToken.trim().length > 0 || githubConnected}
-              onRemove={githubToken.trim() || githubConnected ? () => disconnect("github") : undefined}
+              connected={githubConnected}
+              onRemove={githubConnected ? () => disconnect("github") : undefined}
               action={
                 <button type="button" onClick={connectGithub} className="mx-focus font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/50 transition-colors hover:text-white">
                   {githubConnected ? "Reconnect" : "Connect"}
