@@ -34,7 +34,9 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
-  // Session seam (Phase 0) — observe-only; see lib/security/guard.
+  // Session seam — enforced; see lib/security/guard. The client sends the
+  // signed session via `x-maxxen-session` (or body.session); missing/invalid
+  // sessions are rejected before any provider call.
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }
@@ -312,28 +314,40 @@ export async function POST(req: Request) {
             return;
           }
           const slots: { id: string; name: string; args: string }[] = [];
+          const ingestChunk = (chunk: any) => {
+            const delta: any = chunk?.choices?.[0]?.delta;
+            // Tolerate non-streaming completions (some gateways ignore
+            // `stream: true`): a top-level `message` becomes one chunk.
+            const msg: any = delta ?? chunk?.choices?.[0]?.message;
+            if (!msg) return;
+            if (typeof msg.content === "string" && msg.content) {
+              text += msg.content;
+              send({ type: "message.delta", text: msg.content });
+            }
+            for (const tc of msg.tool_calls ?? []) {
+              const key = Number.isFinite(tc?.index) ? Number(tc.index) : slots.length;
+              if (!slots[key]) slots[key] = { id: "", name: "", args: "" };
+              let slot = slots[key];
+              // A new call reusing an occupied slot (gateways omitting indices).
+              if (slot.name && typeof tc?.function?.name === "string" && tc.function.name && tc.function.name !== slot.name) {
+                slot = { id: "", name: "", args: "" };
+                slots.push(slot);
+              }
+              if (typeof tc?.id === "string" && tc.id) slot.id = tc.id;
+              if (typeof tc?.function?.name === "string" && tc.function.name) slot.name = tc.function.name;
+              if (typeof tc?.function?.arguments === "string") slot.args += tc.function.arguments;
+            }
+          };
           try {
-            for await (const chunk of upstream as any) {
-              if (req.signal.aborted) break;
-              const delta: any = chunk?.choices?.[0]?.delta;
-              if (!delta) continue;
-              if (typeof delta.content === "string" && delta.content) {
-                text += delta.content;
-                send({ type: "message.delta", text: delta.content });
+            if (upstream && typeof (upstream as any)[Symbol.asyncIterator] === "function") {
+              for await (const chunk of upstream as any) {
+                if (req.signal.aborted) break;
+                ingestChunk(chunk);
               }
-              for (const tc of delta.tool_calls ?? []) {
-                const key = Number.isFinite(tc?.index) ? Number(tc.index) : slots.length;
-                if (!slots[key]) slots[key] = { id: "", name: "", args: "" };
-                let slot = slots[key];
-                // A new call reusing an occupied slot (gateways omitting indices).
-                if (slot.name && typeof tc?.function?.name === "string" && tc.function.name && tc.function.name !== slot.name) {
-                  slot = { id: "", name: "", args: "" };
-                  slots.push(slot);
-                }
-                if (typeof tc?.id === "string" && tc.id) slot.id = tc.id;
-                if (typeof tc?.function?.name === "string" && tc.function.name) slot.name = tc.function.name;
-                if (typeof tc?.function?.arguments === "string") slot.args += tc.function.arguments;
-              }
+            } else if (upstream && Array.isArray((upstream as any).choices)) {
+              ingestChunk(upstream);
+            } else {
+              throw new Error("Model returned an unreadable response shape.");
             }
           } catch (e: any) {
             const detail = String(e?.message || e).slice(0, 200);

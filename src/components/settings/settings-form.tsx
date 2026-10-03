@@ -8,6 +8,7 @@ import { ChromeLogo } from "@/components/maxxen/logo";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
 import { validateSession } from "@/lib/auth-api";
+import { withSession } from "@/lib/session-client";
 import { forgetVault, pullVault, pushVault } from "@/lib/sync";
 import {
   PROVIDER_IDS,
@@ -150,8 +151,10 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
   };
 
   // Auth gate + hydrate from localStorage (then best-effort vault pull).
+  // Async-IIFE boundary: every setState below runs after an await (or a
+  // request round-trip), never synchronously in the effect body.
   useEffect(() => {
-    (async () => {
+    void (async () => {
       const s = useAuthStore.getState().session;
       if (!s) {
         router.replace("/login");
@@ -291,7 +294,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
     try {
       const r = await fetch("/api/composio/connect", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: withSession({ "content-type": "application/json" }),
         body: JSON.stringify({ composioKey: key }),
       });
       const j = await r.json().catch(() => null);
@@ -312,7 +315,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
     try {
       const r = await fetch("/api/composio/connect", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: withSession({ "content-type": "application/json" }),
         body: JSON.stringify({ composioKey: key }),
       });
       const j = await r.json().catch(() => null);

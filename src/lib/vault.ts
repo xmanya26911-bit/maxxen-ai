@@ -30,21 +30,26 @@ export function sealSecrets(email: string, secrets: Record<string, string>): Vau
 }
 
 export function openSecrets(email: string, packet: VaultPacket): Record<string, string> {
+  if (!packet || typeof packet !== "object" || Array.isArray(packet)) throw new Error("bad vault");
+  const { iv, tag, data } = packet as { iv?: unknown; tag?: unknown; data?: unknown };
+  if (typeof iv !== "string" || typeof tag !== "string" || typeof data !== "string") throw new Error("bad vault");
+  if (!iv || !tag || !data || iv.length > 100 || tag.length > 100 || data.length > 200_000) throw new Error("bad vault");
   const decipher = crypto.createDecipheriv(
     "aes-256-gcm",
     vaultKey(email),
-    Buffer.from(packet.iv, "base64url")
+    Buffer.from(iv, "base64url")
   );
-  decipher.setAuthTag(Buffer.from(packet.tag, "base64url"));
+  decipher.setAuthTag(Buffer.from(tag, "base64url"));
   const plain = Buffer.concat([
-    decipher.update(Buffer.from(packet.data, "base64url")),
+    decipher.update(Buffer.from(data, "base64url")),
     decipher.final(),
   ]).toString("utf8");
   const obj = JSON.parse(plain);
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error("bad vault");
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (typeof v === "string" && v.length < 8000) out[k] = v;
+    if (BLOCKED_KEYS.has(k)) continue;
+    if (typeof v === "string" && v.length < 8000 && /^[a-zA-Z0-9_]+$/.test(k)) out[k] = v;
   }
   return out;
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/auth-store";
 import { MEMORY_CATEGORIES, type MemoryCategory, type UserMemory } from "@/lib/user-memory/types";
 
 /**
@@ -41,9 +42,10 @@ function ls(key: string, value?: string): string {
 }
 
 async function post(path: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown>; status: number }> {
+  const session = useAuthStore.getState().session?.token || "";
   const r = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: session ? { "Content-Type": "application/json", "x-maxxen-session": session } : { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
@@ -61,7 +63,10 @@ export function MemorySection() {
   const [adding, setAdding] = useState(false);
   const [newText, setNewText] = useState("");
   const [newCategory, setNewCategory] = useState<MemoryCategory>("fact");
-  const [auto, setAuto] = useState(true);
+  // Browser pref, lazily initialized (SSR-safe: ls() returns "" on the
+  // server, which maps to the default `true`). No post-mount setState, so
+  // no cascading render and no hydration flash.
+  const [auto, setAuto] = useState(() => ls("maxxen_memory_auto") !== "0");
   const [busy, setBusy] = useState(false);
 
   const token = () => ls("maxxen_github_token").trim();
@@ -99,10 +104,11 @@ export function MemorySection() {
     }
   };
 
+  // Initial server-memory load. Deferred one tick so the effect body itself
+  // never calls setState synchronously (avoids cascading renders).
   useEffect(() => {
-    setAuto(ls("maxxen_memory_auto") !== "0");
-    void load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const timer = window.setTimeout(() => void load(true), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const mutate = async (ops: unknown[], done: string) => {

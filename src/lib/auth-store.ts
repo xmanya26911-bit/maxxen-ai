@@ -32,21 +32,41 @@ export interface AuthState {
   signOut: () => void;
 }
 
-/** Every localStorage key that belongs to ONE user (never shared). */
+/**
+ * Every localStorage key that belongs to ONE user (never shared).
+ *
+ * Covers the current keys: the chat store ("maxxen-chat-v1"), per-provider
+ * endpoint keys, the endpoint form fields, integration tokens, agent prefs,
+ * and the user-memory/search/timezone/location mirrors. Memory files
+ * ("maxxen_memory_<conv>") and the memory mirror ("maxxen_user_memories")
+ * are per-conversation/cached server data — they are keyed by conversation
+ * and rebuilt from the repo, so stashing them per profile would duplicate
+ * the vault; they stay global on purpose.
+ */
 const USER_KEYS = [
   "maxxen-chat-v1",
-  "maxxen_open_chat",
   "maxxen_apikey",
+  "maxxen_apikey_openai",
+  "maxxen_apikey_anthropic",
+  "maxxen_apikey_gemini",
+  "maxxen_apikey_custom",
+  "maxxen_apikey_opencode",
   "maxxen_baseurl",
   "maxxen_model",
   "maxxen_provider",
-  "maxxen_github_token",
   "maxxen_vercel_token",
   "maxxen_vercel_project",
   "maxxen_composio_key",
-  "maxxen_agent_account",
-  "maxxen_agent_app",
   "maxxen_composio_user_id",
+  "maxxen_search_enabled",
+  "maxxen_search_max",
+  "maxxen_timezone",
+  "maxxen_location_enabled",
+  "maxxen_location_label",
+  "maxxen_location_lat",
+  "maxxen_location_lon",
+  "maxxen_memory_auto",
+  "maxxen_watch",
 ] as const;
 
 const PROFILE_PREFIX = "maxxen-profile-v1:";

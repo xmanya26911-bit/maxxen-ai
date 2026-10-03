@@ -18,7 +18,7 @@ Browser (ChatShell store + mirrors)
           ├─ lib/streaming/{types,events,encode,parse} (12 event types, client parser)
           ├─ lib/tools.ts (ToolDef registry + SCHEMAS + toOpenAITools; kinds project|deploy|composio|local)
           ├─ lib/user-memory/* + lib/memory.ts (project) + lib/assistant-tools.ts (time/search/fetch/location)
-          ├─ lib/{net-guard,github-guard,secret-scan,security/guard (observe-only),context,sync,composio}
+          ├─ lib/{net-guard,github-guard,secret-scan,security/guard (session-enforced),context,sync,composio}
           └─ maxxen-data (user repo): builds/ chats/ memory/<project>.json memory/user/*.json settings.json vault
 Settings: hub + endpoints/memory/integrations/tools pages (one SettingsForm, view prop)
 Tests: vitest, src/lib/__tests__/*.test.ts, @/ alias configured

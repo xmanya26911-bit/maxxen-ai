@@ -12,6 +12,8 @@ const PREF_MAP: Record<string, string> = {
   maxxen_baseurl: "baseURL", maxxen_model: "model", maxxen_provider: "provider",
   maxxen_vercel_project: "vercelProject", maxxen_composio_user_id: "composioUserId",
   maxxen_memory_auto: "memoryAuto",
+  maxxen_search_enabled: "searchEnabled", maxxen_search_max: "searchMax",
+  maxxen_timezone: "timezone",
 };
 const SECRET_MAP: Record<string, string> = {
   maxxen_apikey: "apiKey", maxxen_apikey_openai: "apiKeyOpenai",
@@ -89,7 +91,11 @@ export async function pushVault(session: string): Promise<{ ok: boolean; message
 }
 
 export async function forgetVault(session: string): Promise<{ ok: boolean; message: string }> {
-  const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
+  // Keep auth + conversations; wipe synced settings/secrets only. Keys here
+  // are the CURRENT storage keys (chat store "maxxen-chat-v1", auth store
+  // "maxxen-auth-v1") — legacy names from earlier worklogs are intentionally
+  // absent so a wipe can never strand a live session or delete chats.
+  const KEEP = new Set(["maxxen-auth-v1", "maxxen-chat-v1", "maxxen_memory_auto"]);
   try {
     await fetch("/api/vault/save", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -113,7 +119,14 @@ export function noteLocalChange(localKey: string) {
 
 if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
-    const session = localStorage.getItem("maxxen_session");
-    if (session && localStorage.getItem(READY_KEY) === "1") void pushVault(session);
+    try {
+      // The canonical session lives in the persisted auth store
+      // ("maxxen-auth-v1"); the legacy "maxxen_session" key is long gone.
+      const raw = window.localStorage.getItem("maxxen-auth-v1") || "{}";
+      const session = (JSON.parse(raw) as { state?: { session?: { token?: string } } }).state?.session?.token || "";
+      if (session && localStorage.getItem(READY_KEY) === "1") void pushVault(session);
+    } catch {
+      /* storage unavailable — stay local */
+    }
   });
 }

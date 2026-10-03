@@ -39,6 +39,7 @@ const VIEWPORTS: Record<Viewport, { label: string; width: string }> = {
   mobile: { label: "Mobile", width: "390px" },
 };
 import { cn } from "@/lib/utils";
+import { withSession } from "@/lib/session-client";
 import { copyText } from "./copy";
 import { blockKey, extFor } from "./blocks";
 import type { CodeBlock } from "./types";
@@ -130,6 +131,8 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
   const [pinned, setPinned] = useState<{ key: string; code: string } | null>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [prevLatest, setPrevLatest] = useState(latestBlocks);
+  // New assistant output clears pins/diffs — render-phase state adjustment
+  // (React's documented "derive state from a prop" pattern).
   if (prevLatest !== latestBlocks) {
     setPrevLatest(latestBlocks);
     setPinned(null);
@@ -154,7 +157,8 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
       aliveRef.current = false;
     };
   }, []);
-  // Reset ship status when a new stream starts (render-phase adjustment).
+  // Reset ship status when a new stream starts — render-phase state adjustment
+  // (React's documented "derive state from a prop" pattern).
   const [prevStreaming, setPrevStreaming] = useState(streaming);
   if (prevStreaming !== streaming) {
     setPrevStreaming(streaming);
@@ -269,12 +273,9 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
 
   /** Save every block to YOUR GitHub (maxxen-data, via /api/github/save). */
   const saveAll = async () => {
-    const token = window.localStorage.getItem("maxxen_github_token") || "";
-    if (!token) {
-      setShipState("error");
-      setShipMsg("Add YOUR GitHub token in Settings → Integrations first.");
-      return;
-    }
+    // Session-gated: the credential lives in the HttpOnly OAuth cookie, so a
+    // legacy localStorage token is only a fallback for pre-OAuth installs.
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     if (!blocks.length || streaming) return;
     setShipState("working");
     setShipMsg(`Saving ${blocks.length} file${blocks.length === 1 ? "" : "s"} to YOUR repo…`);
@@ -284,9 +285,9 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
       try {
         const r = await fetch("/api/github/save", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: withSession({ "content-type": "application/json" }),
           body: JSON.stringify({
-            githubToken: token,
+            ...(token ? { githubToken: token } : {}),
             path: blockPath(blocks[idx], idx),
             content: blocks[idx].code,
             message: "maxxen: save build from /chat",
@@ -330,7 +331,7 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
     try {
       const r = await fetch("/api/vercel/deploy", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: withSession({ "content-type": "application/json" }),
         body: JSON.stringify({
           vercelToken: token,
           projectName: project,
@@ -355,7 +356,7 @@ function WorkspacePaneImpl({ blocks: latestBlocks, versions = [], streaming, onC
         try {
           const s = await fetch("/api/vercel/status", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: withSession({ "content-type": "application/json" }),
             body: JSON.stringify({ vercelToken: token, deploymentId: j.id }),
           });
           const st = await s.json().catch(() => null);
@@ -870,14 +871,13 @@ function MemoryForm({ convId }: { convId?: string | null }) {
   // Best-effort: adopt the server copy when it has entries this form lacks.
   useEffect(() => {
     if (!convId) return;
-    const token = window.localStorage.getItem("maxxen_github_token") || "";
-    if (!token) return;
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     (async () => {
       try {
         const r = await fetch("/api/memory/load", {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ githubToken: token, project: convId }),
+          headers: withSession({ "content-type": "application/json" }),
+          body: JSON.stringify({ ...(token ? { githubToken: token } : {}), project: convId }),
         });
         const j = await r.json().catch(() => null);
         const m = j?.memory as Partial<ProjectMemory> | undefined;
@@ -919,19 +919,14 @@ function MemoryForm({ convId }: { convId?: string | null }) {
     } catch {
       /* ignore */
     }
-    const token = window.localStorage.getItem("maxxen_github_token") || "";
-    if (!token) {
-      setState("done");
-      setMsg("Saved in this browser. Add YOUR GitHub token in Settings to persist it across sessions.");
-      return;
-    }
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     setState("working");
     setMsg("Saving to YOUR repo…");
     try {
       const r = await fetch("/api/memory/save", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ githubToken: token, project: convId, memory }),
+        headers: withSession({ "content-type": "application/json" }),
+        body: JSON.stringify({ ...(token ? { githubToken: token } : {}), project: convId, memory }),
       });
       const j = await r.json().catch(() => null);
       if (!r.ok || !j?.ok) throw new Error((j && j.error) || "Save failed.");

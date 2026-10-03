@@ -11,6 +11,7 @@ import Sidebar from "./Sidebar";
 import WorkspacePane from "./WorkspacePane";
 import { extractBlocks } from "./blocks";
 import { uid, useChatStore } from "./store";
+import { withSession } from "@/lib/session-client";
 import { historyWithAttachments, type Attachment, type ImagePayload } from "@/lib/attachments";
 import { useChatSync } from "./use-chat-sync";
 import { createEventParser } from "@/lib/streaming/parse";
@@ -30,12 +31,15 @@ function readMemoryCacheSafe(convId: string): unknown {
 /** Refresh the local memory mirror from the user's repo (best-effort). */
 async function refreshMemoryCache(convId: string): Promise<void> {
   try {
-    const token = window.localStorage.getItem("maxxen_github_token") || "";
-    if (!token || !convId) return;
+    if (!convId) return;
+    // Session-gated like every other repo call: the credential lives in the
+    // HttpOnly OAuth cookie, so a legacy localStorage token is only a
+    // fallback for pre-OAuth installs.
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     const r = await fetch("/api/memory/load", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ githubToken: token, project: convId }),
+      headers: withSession({ "content-type": "application/json" }),
+      body: JSON.stringify({ ...(token ? { githubToken: token } : {}), project: convId }),
     });
     const j = await r.json().catch(() => null);
     if (r.ok && j?.memory) {
@@ -310,9 +314,10 @@ export default function ChatShell() {
   }, [messages]);
 
   // Auth gate: no session → /login; stale token → sign out + /login.
+  // Async-IIFE: setAuthChecked() runs only after the validation round-trip.
   useEffect(() => {
     if (!mounted) return;
-    (async () => {
+    void (async () => {
       const session = useAuthStore.getState().session;
       if (!session) {
         router.replace("/login");
@@ -335,7 +340,9 @@ export default function ChatShell() {
     })();
   }, [mounted, router]);
 
-  // Reset follow-mode when switching conversations (render-phase adjustment).
+  // Reset follow-mode when switching conversations. Render-phase state
+  // adjustment (React's documented "derive state from a prop" pattern) — the
+  // guarded setState runs at most once per change, never in an effect.
   const [pinnedConv, setPinnedConv] = useState<string | null>(null);
   if (pinnedConv !== activeId) {
     setPinnedConv(activeId);
@@ -403,13 +410,11 @@ function readUserMemoryCacheSafe(): unknown[] {
 /** Refresh the user-memory mirror (best-effort, cached copy applies meanwhile). */
 async function refreshUserMemoryCache(): Promise<void> {
   try {
-    const token = window.localStorage.getItem("maxxen_github_token");
-    if (!token) return;
-    const sessionToken = useAuthStore.getState().session?.token;
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     const r = await fetch("/api/user-memory/list", {
       method: "POST",
-      headers: sessionToken ? { "Content-Type": "application/json", "x-maxxen-session": sessionToken } : { "Content-Type": "application/json" },
-      body: JSON.stringify({ githubToken: token }),
+      headers: withSession({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ ...(token ? { githubToken: token } : {}) }),
     });
     const j = await r.json().catch(() => null);
     if (r.ok && Array.isArray(j?.memories)) {
@@ -439,8 +444,7 @@ function triggerMemoryExtract(
 ): void {
   try {
     if (!autoMemoryEnabled() || !endpoint || !history.length) return;
-    const token = window.localStorage.getItem("maxxen_github_token");
-    if (!token) return;
+    const token = window.localStorage.getItem("maxxen_github_token") || undefined;
     const turns = history
       .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
       .slice(-12)
@@ -448,9 +452,9 @@ function triggerMemoryExtract(
     if (!turns.length) return;
     void fetch("/api/user-memory/extract", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withSession({ "Content-Type": "application/json" }),
       body: JSON.stringify({
-        githubToken: token,
+        ...(token ? { githubToken: token } : {}),
         messages: turns,
         apiKey: endpoint.apiKey,
         baseURL: endpoint.baseURL,
@@ -509,10 +513,9 @@ function triggerMemoryExtract(
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileOpen, paneOpen]);
 
-  // The artifact overlay only exists while blocks do (render-phase adjustment).
-  if (paneOpen && blocks.length === 0) {
-    setPaneOpen(false);
-  }
+  // The artifact overlay only exists while blocks do — derive closure from data
+  // instead of syncing state during render.
+  const paneOpenEffective = paneOpen && blocks.length > 0;
 
   // Keep the thread pinned to the bottom unless the user scrolled up >120px.
   useEffect(() => {
@@ -562,7 +565,7 @@ function triggerMemoryExtract(
         }
         const res = await fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: withSession({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             messages: history,
             mode: requestMode,
@@ -715,7 +718,7 @@ function triggerMemoryExtract(
       try {
         const res = await fetch("/api/agent/run", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: withSession({ "Content-Type": "application/json" }),
           body: JSON.stringify({
             messages: history,
             ...endpoint,
@@ -1221,7 +1224,7 @@ function triggerMemoryExtract(
 
       {/* Workspace overlay (below xl, only when artifacts exist) */}
       <AnimatePresence>
-        {paneOpen && (
+        {paneOpenEffective && (
           <>
             <motion.div
               key="pane-backdrop"

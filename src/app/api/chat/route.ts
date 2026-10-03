@@ -66,8 +66,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  // Session seam (Phase 0) — observe-only; see lib/security/guard. Flip
-  // SESSION_ENFORCED to true once the client sends a session token.
+  // Session seam — enforced; see lib/security/guard. The client sends the
+  // signed session via `x-maxxen-session` (or body.session); missing/invalid
+  // sessions are rejected before any provider call.
   if (SESSION_ENFORCED && !hasValidSession(req, body)) {
     return NextResponse.json({ error: "Session required." }, { status: 401 });
   }

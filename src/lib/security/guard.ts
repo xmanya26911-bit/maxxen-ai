@@ -26,10 +26,11 @@ export type SessionCheck =
   | { ok: false; reason: "missing" | "invalid" };
 
 /**
- * Phase 0 is OBSERVE-ONLY: the chat/agent clients do not yet transmit a session,
- * so routes must not reject on a missing session. Flip this to `true` once the
- * client sends `session` (header or body) — the routes already call the guard,
- * so enforcement becomes a one-line switch with no route redesign.
+ * Every mutating/credential-bearing route requires a signed MAXXEN session
+ * (verified by lib/session). Clients send it as the `x-maxxen-session`
+ * header (or `body.session`); missing/invalid sessions are rejected before
+ * any provider or GitHub call. The constant stays a named export so tests
+ * and future flags can reference the seam in one place.
  */
 export const SESSION_ENFORCED = true;
 

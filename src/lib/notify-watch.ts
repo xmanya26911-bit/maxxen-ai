@@ -73,13 +73,20 @@ export function clearFinished(): void {
 export async function pollWatch(id: string): Promise<DeployWatch | null> {
   const token = window.localStorage.getItem("maxxen_vercel_token") || "";
   if (!token) return null;
+  let session = "";
+  try {
+    const { useAuthStore } = await import("./auth-store");
+    session = useAuthStore.getState().session?.token || "";
+  } catch {
+    session = "";
+  }
   const watches = readWatches();
   const found = watches.find((w) => w.id === id);
   if (!found || isTerminal(found.state)) return found ?? null;
   try {
     const r = await fetch("/api/vercel/status", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: session ? { "content-type": "application/json", "x-maxxen-session": session } : { "content-type": "application/json" },
       body: JSON.stringify({ vercelToken: token, deploymentId: id }),
     });
     const j = await r.json().catch(() => null);

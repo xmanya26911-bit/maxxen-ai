@@ -47,31 +47,35 @@ function validTimezone(tz: string): boolean {
 }
 
 export function ToolsSection() {
-  const [searchOn, setSearchOn] = useState(true);
-  const [maxResults, setMaxResults] = useState("5");
+  // Browser prefs, lazily initialized (SSR-safe: ls() returns "" on the
+  // server, detectTimezone() falls back to "UTC"). No post-mount setState,
+  // so no cascading render and no hydration flash.
+  const [searchOn, setSearchOn] = useState(() => ls("maxxen_search_enabled") !== "0");
+  const [maxResults, setMaxResults] = useState(() => ls("maxxen_search_max") || "5");
   const [serverSearch, setServerSearch] = useState<"unknown" | "yes" | "no">("unknown");
-  const [timezone, setTimezone] = useState("");
+  const [timezone, setTimezone] = useState(() => ls("maxxen_timezone") || detectTimezone());
   const [tzMsg, setTzMsg] = useState("");
-  const [locOn, setLocOn] = useState(false);
-  const [locLabel, setLocLabel] = useState("");
+  const [locOn, setLocOn] = useState(() => ls("maxxen_location_enabled") === "1");
+  const [locLabel, setLocLabel] = useState(() => ls("maxxen_location_label"));
   const [locating, setLocating] = useState(false);
   const [status, setStatus] = useState("");
 
+  // Server capability probe only — the single setState runs after a network
+  // round-trip (subscription-style effect, not a cascading render).
   useEffect(() => {
-    setSearchOn(ls("maxxen_search_enabled") !== "0");
-    setMaxResults(ls("maxxen_search_max") || "5");
-    setTimezone(ls("maxxen_timezone") || detectTimezone());
-    setLocOn(ls("maxxen_location_enabled") === "1");
-    setLocLabel(ls("maxxen_location_label"));
-    (async () => {
+    let cancelled = false;
+    void (async () => {
       try {
         const r = await fetch("/api/assistant-tools/status", { cache: "no-store" });
         const j = await r.json().catch(() => null);
-        setServerSearch(j?.searchConfigured === true ? "yes" : "no");
+        if (!cancelled) setServerSearch(j?.searchConfigured === true ? "yes" : "no");
       } catch {
-        setServerSearch("no");
+        if (!cancelled) setServerSearch("no");
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const flash = (m: string) => setStatus(m);
