@@ -1,112 +1,119 @@
-// Browser-side vault sync. Server (per-gmail encrypted vault in the user's
-// own GitHub repo) is the source of truth; localStorage is a fast cache.
-// All network failures are best-effort: the UI always keeps working offline
-// with whatever is cached locally.
+// Seamless GitHub-backed sync: localStorage is the instant cache; the user's private
+// maxxen-data repo is the durable source of truth. GitHub credentials never live in localStorage.
 
 const ls = (k: string, v?: string) => {
   if (typeof window === "undefined") return "";
   if (v === undefined) return localStorage.getItem(k) || "";
-  if (v === "__DEL__") localStorage.removeItem(k);
-  else localStorage.setItem(k, v);
+  if (v === "__DEL__") localStorage.removeItem(k); else localStorage.setItem(k, v);
   return v;
 };
 
-// localStorage key -> vault field
 const PREF_MAP: Record<string, string> = {
-  maxxen_baseurl: "baseURL",
-  maxxen_model: "model",
-  maxxen_provider: "provider",
-  maxxen_vercel_project: "vercelProject",
-  maxxen_composio_user_id: "composioUserId",
+  maxxen_baseurl: "baseURL", maxxen_model: "model", maxxen_provider: "provider",
+  maxxen_vercel_project: "vercelProject", maxxen_composio_user_id: "composioUserId",
   maxxen_memory_auto: "memoryAuto",
 };
 const SECRET_MAP: Record<string, string> = {
-  // Per-provider chat keys (legacy maxxen_apikey still synced for older clients).
-  maxxen_apikey: "apiKey",
-  maxxen_apikey_openai: "apiKeyOpenai",
-  maxxen_apikey_anthropic: "apiKeyAnthropic",
-  maxxen_apikey_gemini: "apiKeyGemini",
-  maxxen_apikey_custom: "apiKeyCustom",
-  maxxen_apikey_opencode: "apiKeyOpencode",
-  maxxen_composio_key: "composioKey",
-  maxxen_github_token: "githubToken",
-  maxxen_vercel_token: "vercelToken",
+  maxxen_apikey: "apiKey", maxxen_apikey_openai: "apiKeyOpenai",
+  maxxen_apikey_anthropic: "apiKeyAnthropic", maxxen_apikey_gemini: "apiKeyGemini",
+  maxxen_apikey_custom: "apiKeyCustom", maxxen_apikey_opencode: "apiKeyOpencode",
+  maxxen_composio_key: "composioKey", maxxen_vercel_token: "vercelToken",
 };
+const DELETED_KEY = "maxxen_sync_deleted";
+const READY_KEY = "maxxen_sync_ready";
+let timer: ReturnType<typeof setTimeout> | null = null;
+let inFlight: Promise<{ ok: boolean; message: string }> | null = null;
+
+function deleted(): Record<string, "prefs" | "secrets"> {
+  try { return JSON.parse(localStorage.getItem(DELETED_KEY) || "{}"); } catch { return {}; }
+}
+function markDeleted(local: string, kind: "prefs" | "secrets") {
+  const d = deleted(); d[local] = kind; localStorage.setItem(DELETED_KEY, JSON.stringify(d));
+}
+function clearDeleted() { localStorage.removeItem(DELETED_KEY); }
+
+export function scheduleVaultSync(session: string, delay = 700) {
+  if (typeof window === "undefined" || !session || localStorage.getItem(READY_KEY) !== "1") return;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => { timer = null; void pushVault(session); }, delay);
+}
 
 export async function pullVault(session: string): Promise<{ ok: boolean; applied: number; message: string }> {
   try {
-    const githubToken = ls("maxxen_github_token");
     const r = await fetch("/api/vault/load", {
-      method: "POST",
-      body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}) }),
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session }), cache: "no-store",
     });
     const j = await r.json();
-    if (j.error) return { ok: false, applied: 0, message: j.error };
+    if (!r.ok || j.error) return { ok: false, applied: 0, message: j.error || "Sync failed." };
     let applied = 0;
-    const prefs = j.prefs || {};
     for (const [local, remote] of Object.entries(PREF_MAP)) {
-      if (typeof prefs[remote] === "string" && prefs[remote]) {
-        ls(local, prefs[remote]);
-        applied++;
-      }
+      if (typeof j.prefs?.[remote] === "string") { ls(local, j.prefs[remote]); applied++; }
+      else ls(local, "__DEL__");
     }
-    const secrets = j.secrets || {};
     for (const [local, remote] of Object.entries(SECRET_MAP)) {
-      if (typeof secrets[remote] === "string" && secrets[remote]) {
-        ls(local, secrets[remote]);
-        applied++;
-      }
+      if (typeof j.secrets?.[remote] === "string") { ls(local, j.secrets[remote]); applied++; }
+      else ls(local, "__DEL__");
     }
-    if (j.fresh) return { ok: true, applied: 0, message: "Fresh vault created for this account." };
-    return { ok: true, applied, message: applied ? `Restored ${applied} synced item${applied === 1 ? "" : "s"}.` : "Vault empty — save once to start syncing." };
+    clearDeleted(); localStorage.setItem(READY_KEY, "1");
+    return { ok: true, applied, message: j.fresh ? "GitHub sync ready." : "Synced " + applied + " item" + (applied === 1 ? "" : "s") + "." };
   } catch (e: any) {
-    return { ok: false, applied: 0, message: e.message || "Sync failed — using local values." };
+    return { ok: false, applied: 0, message: e?.message || "Sync unavailable — using local cache." };
   }
 }
 
 export async function pushVault(session: string): Promise<{ ok: boolean; message: string }> {
-  try {
-    const githubToken = ls("maxxen_github_token");
-    const prefs: Record<string, string> = {};
-    for (const [local, remote] of Object.entries(PREF_MAP)) {
-      const v = ls(local);
-      if (v) prefs[remote] = v;
-    }
-    const secrets: Record<string, string> = {};
-    for (const [local, remote] of Object.entries(SECRET_MAP)) {
-      const v = ls(local);
-      if (v) secrets[remote] = v;
-    }
-    const r = await fetch("/api/vault/save", {
-      method: "POST",
-      body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}), prefs, secrets }),
-    });
-    const j = await r.json();
-    if (j.error) return { ok: false, message: j.error };
-    return { ok: true, message: j.savedSecrets ? "Synced + encrypted to YOUR repo." : "Preferences synced to YOUR repo." };
-  } catch (e: any) {
-    return { ok: false, message: e.message || "Sync failed — kept locally." };
-  }
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    try {
+      const prefs: Record<string, string> = {};
+      for (const [local, remote] of Object.entries(PREF_MAP)) { const v = ls(local); if (v) prefs[remote] = v; }
+      const secrets: Record<string, string> = {};
+      for (const [local, remote] of Object.entries(SECRET_MAP)) { const v = ls(local); if (v) secrets[remote] = v; }
+      const d = deleted();
+      const deletePrefs = Object.keys(d).filter(k => d[k] === "prefs").map(k => PREF_MAP[k]).filter(Boolean);
+      const deleteSecrets = Object.keys(d).filter(k => d[k] === "secrets").map(k => SECRET_MAP[k]).filter(Boolean);
+      const r = await fetch("/api/vault/save", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session, prefs, secrets, deletePrefs, deleteSecrets }), cache: "no-store",
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) return { ok: false, message: j.error || "Sync failed." };
+      clearDeleted(); localStorage.setItem(READY_KEY, "1");
+      return { ok: true, message: "Synced to your private GitHub data." };
+    } catch (e: any) {
+      return { ok: false, message: e?.message || "Sync unavailable — kept locally." };
+    } finally { inFlight = null; }
+  })();
+  return inFlight;
 }
 
 export async function forgetVault(session: string): Promise<{ ok: boolean; message: string }> {
-  // Complete reset: server wipes prefs + vault (wipe:true), browser drops
-  // every maxxen_* key except the login session itself.
   const KEEP = new Set(["maxxen_session", "maxxen_otp_email", "maxxen_otp_ticket", "maxxen_chats", "maxxen_open_chat"]);
   try {
-    const githubToken = ls("maxxen_github_token");
     await fetch("/api/vault/save", {
-        method: "POST",
-        body: JSON.stringify({ session, ...(githubToken ? { githubToken } : {}), prefs: {}, secrets: {}, wipe: true }),
-      });
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ session, prefs: {}, secrets: {}, wipe: true }), cache: "no-store",
+    });
     if (typeof window !== "undefined") {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const k = localStorage.key(i) || "";
         if (k.startsWith("maxxen_") && !KEEP.has(k)) localStorage.removeItem(k);
       }
     }
-    return { ok: true, message: "Vault, keys and preferences wiped. Your conversations were kept." };
-  } catch (e: any) {
-    return { ok: false, message: e.message || "Forget failed." };
-  }
+    return { ok: true, message: "Vault and synced settings wiped. Conversations were kept." };
+  } catch (e: any) { return { ok: false, message: e?.message || "Forget failed." }; }
+}
+
+export function noteLocalChange(localKey: string) {
+  const kind = PREF_MAP[localKey] ? "prefs" : SECRET_MAP[localKey] ? "secrets" : null;
+  if (!kind || typeof window === "undefined") return;
+  if (!localStorage.getItem(localKey)) markDeleted(localKey, kind);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    const session = localStorage.getItem("maxxen_session");
+    if (session && localStorage.getItem(READY_KEY) === "1") void pushVault(session);
+  });
 }
