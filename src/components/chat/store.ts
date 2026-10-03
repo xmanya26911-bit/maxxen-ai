@@ -54,7 +54,7 @@ interface LegacyMessage extends Message {
 
 /** Renames the v1 `error` flag to the v2 `failed` flag on one persisted message. */
 function migrateMessage(m: LegacyMessage): Message {
-  const next: Message = { ...m };
+  const next: LegacyMessage = { ...m };
   if (next.error) {
     next.failed = true;
     delete (next as LegacyMessage).error;
