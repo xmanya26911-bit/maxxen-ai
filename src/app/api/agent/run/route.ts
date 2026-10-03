@@ -112,7 +112,7 @@ export async function POST(req: Request) {
 
   // Maxxen runtime: capabilities probed live, tool registry filtered to what
   // is actually usable, one stable identity for every model.
-  const runtime = await buildRuntime(ctx, { providerLabel: typeof provider === "string" && provider ? provider : "custom" });
+  const runtime = await buildRuntime(ctx, { providerLabel: typeof provider === "string" && provider ? provider : "custom", mode: "agent", userText: latestUserMessage || "" });
   const openaiTools = toOpenAITools(runtime.tools) as any;
 
   const stream = new ReadableStream({
