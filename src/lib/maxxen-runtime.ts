@@ -19,6 +19,8 @@
 
 import type { Ctx, ToolDef } from "./tools";
 import { registry } from "./tools";
+import { classifyIntent, intentForMode } from "./runtime/intent";
+import type { RuntimeCapabilities } from "./runtime/types";
 
 export interface Capabilities {
   ai: { configured: boolean };
@@ -33,6 +35,9 @@ export interface Runtime {
   tools: ToolDef[];
   /** Full system prompt: identity + live capability/workspace context. */
   systemPrompt: string;
+  runtimeVersion: "2";
+  intent: import("./runtime/types").RuntimeIntent;
+  capabilityMatrix: RuntimeCapabilities;
 }
 
 export const MAXXEN_IDENTITY = `You are Maxxen, an autonomous AI development agent operating inside the Maxxen workspace.
@@ -163,7 +168,7 @@ function capabilityBlock(caps: Capabilities, providerLabel: string): string {
  */
 export async function buildRuntime(
   ctx: Ctx,
-  opts?: { providerLabel?: string; mode?: string }
+  opts?: { providerLabel?: string; mode?: string; userText?: string }
 ): Promise<Runtime> {
   const github = has(ctx.githubToken);
   const vercel = has(ctx.vercelToken);
@@ -188,12 +193,28 @@ export async function buildRuntime(
   });
 
   const providerLabel = opts?.providerLabel || "user-selected";
+  const intent = intentForMode(opts?.mode) ?? classifyIntent(opts?.userText || "");
+  const capabilityMatrix: RuntimeCapabilities = {
+    tools: tools.length > 0,
+    toolCalling: tools.length > 0,
+    vision: false,
+    audioInput: false,
+    audioOutput: false,
+    imageGeneration: false,
+    structuredOutput: false,
+    reasoning: false,
+    parallelToolCalls: false,
+    browser: tools.some((t) => t.id === "web_search" || t.id === "fetch_webpage"),
+    python: tools.some((t) => /python/i.test(t.id)),
+    filesystem: tools.some((t) => t.kind === "local" || t.id.startsWith("project_")),
+    artifacts: true,
+  };
   let systemPrompt = `${MAXXEN_IDENTITY}\n\n${capabilityBlock(capabilities, providerLabel)}`;
   if (opts?.mode && opts.mode !== "chat") {
     systemPrompt += `\n\nActive workspace mode: ${opts.mode.toUpperCase()} — bias your behavior toward what that mode means (build/code/design/research/deploy/agent), within the tools actually exposed above.`;
   }
 
-  return { capabilities, tools, systemPrompt };
+  return { capabilities, tools, systemPrompt, runtimeVersion: "2", intent, capabilityMatrix };
 }
 
 /** Missing-integration guidance the model echoes (never a credential). */
