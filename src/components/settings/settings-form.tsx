@@ -242,9 +242,12 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
     ls("maxxen_baseurl", baseURL.trim());
     setProviderKey(provider, apiKey.trim());
     ls("maxxen_model", model.trim());
-    ls("maxxen_github_token", githubToken.trim());
+    // OAuth credentials live only in the HttpOnly cookie. Never let a stale
+    // localStorage token replace a verified OAuth connection on Save.
+    if (!githubConnected) ls("maxxen_github_token", githubToken.trim());
+    else ls("maxxen_github_token", "");
     const sessionToken = useAuthStore.getState().session?.token ?? "";
-    if (sessionToken && githubToken.trim()) {
+    if (sessionToken && githubToken.trim() && !githubConnected) {
       const r = await fetch("/api/account/github", {
         method: "POST",
         headers: { "content-type": "application/json", "x-maxxen-session": sessionToken },
