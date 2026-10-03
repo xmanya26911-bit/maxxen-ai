@@ -405,9 +405,10 @@ async function refreshUserMemoryCache(): Promise<void> {
   try {
     const token = window.localStorage.getItem("maxxen_github_token");
     if (!token) return;
+    const sessionToken = useAuthStore.getState().session?.token;
     const r = await fetch("/api/user-memory/list", {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(useAuthStore.getState().session?.token ? { "x-maxxen-session": useAuthStore.getState().session.token } : {}) },
+      headers: sessionToken ? { "Content-Type": "application/json", "x-maxxen-session": sessionToken } : { "Content-Type": "application/json" },
       body: JSON.stringify({ githubToken: token }),
     });
     const j = await r.json().catch(() => null);
