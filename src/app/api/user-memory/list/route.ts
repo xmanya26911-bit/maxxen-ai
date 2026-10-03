@@ -3,6 +3,7 @@ import { Octokit } from "octokit";
 import { GitHubMemoryStore, octokitMemoryIO } from "@/lib/user-memory/store";
 import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { resolveGithubToken } from "@/lib/github-account";
+import { resolveGithubToken } from "@/lib/github-account";
 
 /**
  * POST /api/user-memory/list — all user memories from the caller's own
