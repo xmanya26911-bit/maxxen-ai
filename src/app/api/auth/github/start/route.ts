@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/session";
+import { serverSecret, verifySession } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const STATE_COOKIE = "maxxen-github-oauth-state";
-const SESSION_COOKIE = "maxxen-github-oauth-session";
+const TRANSACTION_COOKIE = "maxxen-github-oauth-tx";
 const STATE_TTL_SECONDS = 10 * 60;
 
 function publicOrigin(req: Request): string {
@@ -29,6 +28,11 @@ export async function GET(req: Request) {
   }
 
   const state = crypto.randomBytes(32).toString("base64url");
+  const email = verifySession(sessionToken)!;
+  const exp = Date.now() + STATE_TTL_SECONDS * 1000;
+  const payload = `${email}|${exp}|${state}`;
+  const sig = crypto.createHmac("sha256", serverSecret()).update(payload).digest("hex");
+  const transaction = Buffer.from(`${payload}|${sig}`).toString("base64url");
   const redirectUri = `${publicOrigin(req)}/api/auth/github/callback`;
   const params = new URLSearchParams({
     client_id: clientId,
@@ -43,14 +47,7 @@ export async function GET(req: Request) {
   });
 
   const secure = process.env.NODE_ENV === "production";
-  res.cookies.set(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure,
-    sameSite: "lax",
-    maxAge: STATE_TTL_SECONDS,
-    path: "/",
-  });
-  res.cookies.set(SESSION_COOKIE, sessionToken, {
+  res.cookies.set(TRANSACTION_COOKIE, transaction, {
     httpOnly: true,
     secure,
     sameSite: "lax",
