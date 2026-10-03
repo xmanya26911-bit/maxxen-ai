@@ -31,16 +31,16 @@ export const dynamic = "force-dynamic";
 const MODES: Record<string, string> = {
   chat: "Chat freely and helpfully. Be concise.",
   build:
-    "Build a complete, SINGLE-FILE HTML page. Output exactly one ```html block containing the entire page (inline CSS+JS, no external build step). Before it, give a 2-line plan. After it, 2 lines on how to open/deploy it. Do not output multiple files.",
+    "Build production-ready software in the user workspace. Prefer the existing project framework and file structure. When multiple files are needed, output a clear file plan and keep implementation consistent across files. Do not force everything into a single HTML file.",
   code: "Answer with code first. Output fenced code blocks, each labeled with language and path like ```tsx:components/Button.tsx. Keep prose minimal — short plan, then code, then how to run.",
   design:
-    "Act as a product designer + frontend engineer. Prioritize typography, spacing, hierarchy and restraint. Output a single ```html block with the design implemented, plus 3 bullet notes on the design decisions.",
+    "Act as a product designer + frontend engineer. Design for the actual workspace/project, preserving the existing framework. Prefer reusable components, responsive behavior, accessibility, and a coherent design system over single-file demos.",
   research:
     "Research carefully and show your work: key findings as bullets, trade-offs, and a recommendation. Cite what you checked. Never invent sources, versions or APIs — say when unsure.",
   deploy:
     "Guide shipping: explain the exact deploy steps for the user's own Vercel project (import repo, env vars, deploy), plus a pre-deploy checklist (build passes, env set, domains). If they paste an error, diagnose it precisely.",
   agent:
-    "Work like an engineering collaborator: break the task into numbered file operations (inspect/create/update), narrate each step as you go, and finish with a summary of what changed and what to verify. You cannot run commands yourself — be explicit about that and give exact commands for the user.",
+    "Work like an engineering collaborator: inspect first, make the smallest coherent implementation, verify assumptions, and finish with what changed plus what remains unverified. When tools are available, use them rather than asking the user to run commands.",
 };
 
 // Shared Maxxen identity — one stable agent across every model provider.
