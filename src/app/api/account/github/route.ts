@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLinkedGithubToken, linkGithubToken, unlinkGithubToken } from "@/lib/account-vault";
+import { clearGithubTokenCookie, getGithubTokenCookie, setGithubTokenCookie } from "@/lib/github-token-cookie";
 import { sessionEmail } from "@/lib/session";
 
 export const runtime = "nodejs";
@@ -7,11 +7,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const email = sessionEmail(req);
-    if (!email) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    const token = await getLinkedGithubToken(email);
-    if (!token) return NextResponse.json({ ok: true, connected: false });
-    return NextResponse.json({ ok: true, connected: true, method: "vercel_blob" });
+    if (!sessionEmail(req)) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    const token = getGithubTokenCookie(req);
+    return NextResponse.json({ ok: true, connected: Boolean(token), method: token ? "encrypted_cookie" : undefined });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "GitHub connection lookup failed." }, { status: 500 });
   }
@@ -19,13 +17,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const email = sessionEmail(req);
-    if (!email) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    if (!sessionEmail(req)) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
     const body = await req.json().catch(() => ({}));
-    const token = typeof body?.githubToken === "string" ? body.githubToken : "";
-    if (!token.trim()) return NextResponse.json({ error: "GitHub token is required." }, { status: 400 });
-    await linkGithubToken(email, token);
-    return NextResponse.json({ ok: true, connected: true });
+    const token = typeof body?.githubToken === "string" ? body.githubToken.trim() : "";
+    if (!token) return NextResponse.json({ error: "GitHub token is required." }, { status: 400 });
+    const res = NextResponse.json({ ok: true, connected: true });
+    setGithubTokenCookie(res, token);
+    return res;
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "GitHub connection failed." }, { status: 500 });
   }
@@ -33,10 +31,10 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const email = sessionEmail(req);
-    if (!email) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-    await unlinkGithubToken(email);
-    return NextResponse.json({ ok: true, connected: false });
+    if (!sessionEmail(req)) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    const res = NextResponse.json({ ok: true, connected: false });
+    clearGithubTokenCookie(res);
+    return res;
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "GitHub disconnect failed." }, { status: 500 });
   }
