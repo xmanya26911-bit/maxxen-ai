@@ -193,7 +193,17 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
           setProvider(syncedProv);
           setApiKey(getProviderKey(syncedProv));
           setGithubToken(ls("maxxen_github_token"));
-          setGithubConnected(Boolean(ls("maxxen_github_token")));
+          // OAuth is stored in an HttpOnly cookie, so localStorage must never
+          // overwrite the server-verified connection state after a vault pull.
+          try {
+            const gh = await fetch("/api/account/github", {
+              headers: stored?.token ? { "x-maxxen-session": stored.token } : {},
+            });
+            const ghj = await gh.json().catch(() => null);
+            setGithubConnected(Boolean(gh.ok && ghj?.connected));
+          } catch {
+            setGithubConnected(false);
+          }
           setVercelToken(ls("maxxen_vercel_token"));
           setVercelProject(ls("maxxen_vercel_project") || "maxxen");
           setComposioKey(ls("maxxen_composio_key"));
