@@ -1,4 +1,4 @@
-import { anthropicCapabilities, openAICompatibleCapabilities } from "../capabilities";
+import { anthropicCapabilities, nonToolCallingCapabilities, openAICompatibleCapabilities } from "../capabilities";
 import { familyForModelId } from "./opencode-catalog";
 import { PROVIDER_IDS, type CapabilityDescriptor, type ProviderId } from "../types";
 
@@ -121,7 +121,7 @@ export function capabilitiesFor(id: ProviderId, model: string): CapabilityDescri
   // OpenCode: only the OpenAI-chat family drives the tool loop; every other
   // family is streaming chat (honestly non-tool-calling, like Claude).
   if (id === "opencode")
-    return familyForModelId(model) === "openai-chat" ? openAICompatibleCapabilities() : anthropicCapabilities();
+    return familyForModelId(model) === "openai-chat" ? openAICompatibleCapabilities() : nonToolCallingCapabilities();
   return openAICompatibleCapabilities();
 }
 
