@@ -11,6 +11,7 @@ import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 import { buildUserMemoryBlock } from "@/lib/user-memory/prompts";
 import { buildRequestContext } from "@/lib/assistant-tools";
 import { sanitizeImagePayload } from "@/lib/attachments";
+import { classifyIntent, intentForMode } from "@/lib/runtime/intent";
 
 /**
  * MAXXEN Chat — BYOK streaming endpoint.
@@ -90,13 +91,14 @@ export async function POST(req: Request) {
   const modeKey =
     typeof mode === "string" && MODES[mode.toLowerCase()] ? mode.toLowerCase() : "chat";
   const lastUserText = [...clean].reverse().find((m) => m.role === "user")?.content ?? "";
+  const runtimeIntent = intentForMode(modeKey) ?? classifyIntent(lastUserText);
   const userMemBlock = buildUserMemoryBlock(userMemories, lastUserText);
   const timeLocBlock = buildRequestContext({
     timezone: typeof timezone === "string" ? timezone : undefined,
     userLocation: typeof userLocation === "string" ? userLocation : undefined,
   });
   const system = assembleSystemPrompt([
-    `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\n${MODES[modeKey]}`,    userMemBlock,
+    `${BASE_SYSTEM}\n\nMode: ${modeKey.toUpperCase()}\nIntent: ${runtimeIntent}\n${MODES[modeKey]}`,    userMemBlock,
     timeLocBlock,
   ]);
   let sized = budgetMessages(clean);
