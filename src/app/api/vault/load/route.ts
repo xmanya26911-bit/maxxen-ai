@@ -4,24 +4,24 @@ import { verifySession } from "@/lib/session";
 import { getGithubTokenCookie } from "@/lib/github-token-cookie";
 import { SETTINGS_PATH, openSecrets, type StoredSettings } from "@/lib/vault";
 
-// Loads the calling USER's preferences + decrypts their vault from THEIR OWN
-// maxxen-data repo. Same auth contract as save: valid session + matching
-// email + the user's own GitHub token (used once, never stored).
 export async function POST(req: Request) {
   try {
-    const { session, githubToken } = await req.json();
+    const { session } = await req.json();
     const email = verifySession(String(session || ""));
     if (!email) return NextResponse.json({ error: "Session expired. Log in again." }, { status: 401 });
-    const resolvedToken = typeof githubToken === "string" && githubToken.trim() ? githubToken.trim() : getGithubTokenCookie(req);
-    if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
+    const token = getGithubTokenCookie(req);
+    if (!token) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
 
-    const oct = new Octokit({ auth: resolvedToken });
+    const oct = new Octokit({ auth: token });
     const { data: me } = await oct.rest.users.getAuthenticated();
     const repo = "maxxen-data";
     try {
       await oct.rest.repos.get({ owner: me.login, repo });
     } catch {
-      return NextResponse.json({ ok: true, repo: `${me.login}/${repo}`, prefs: {}, secrets: {}, fresh: true });
+      await oct.rest.repos.createForAuthenticatedUser({
+        name: repo, private: true, description: "Maxxen AI user storage (preferences + encrypted vault)",
+      });
+      return NextResponse.json({ ok: true, repo: me.login + "/" + repo, prefs: {}, secrets: {}, fresh: true });
     }
 
     let stored: StoredSettings | null = null;
@@ -30,10 +30,8 @@ export async function POST(req: Request) {
       if (!Array.isArray(cur.data) && cur.data.type === "file") {
         stored = JSON.parse(Buffer.from((cur.data as any).content, "base64").toString("utf8"));
       }
-    } catch {
-      stored = null;
-    }
-    if (!stored) return NextResponse.json({ ok: true, repo: `${me.login}/${repo}`, prefs: {}, secrets: {}, fresh: true });
+    } catch {}
+    if (!stored) return NextResponse.json({ ok: true, repo: me.login + "/" + repo, prefs: {}, secrets: {}, fresh: true });
 
     let secrets: Record<string, string> = {};
     if (stored.vault && typeof stored.vault === "object") {
@@ -41,14 +39,16 @@ export async function POST(req: Request) {
         secrets = openSecrets(email, stored.vault);
         delete secrets.githubToken;
       } catch {
-        return NextResponse.json({ error: "Vault locked — it was sealed in a different session. Re-save from Settings to re-seal." }, { status: 403 });
+        return NextResponse.json({ error: "Vault locked — re-save from Settings to re-seal it." }, { status: 403 });
       }
     }
     const prefs = stored.prefs && typeof stored.prefs === "object" ? stored.prefs : {};
-    return NextResponse.json({ ok: true, repo: `${me.login}/${repo}`, prefs, secrets, updatedAt: stored.updatedAt || null });
+    return NextResponse.json({
+      ok: true, repo: me.login + "/" + repo, prefs, secrets, updatedAt: stored.updatedAt || null,
+    });
   } catch (e: any) {
     const raw = e.message ?? "Vault load failed";
-    const hint = /401|Bad credentials/i.test(raw) ? " — GitHub token invalid; recreate it (repo scope)." : "";
+    const hint = /401|Bad credentials/i.test(raw) ? " — GitHub token invalid; reconnect GitHub." : "";
     return NextResponse.json({ error: raw + hint }, { status: 500 });
   }
 }
