@@ -68,6 +68,12 @@ export async function GET(req: Request) {
       return redirect(req, { github: "error", message: "GitHub token exchange failed. Please try again." });
     }
 
+    const grantedScopes = String(token?.scope || tokenResponse.headers.get("X-OAuth-Scopes") || "")
+      .split(",").map((s: string) => s.trim()).filter(Boolean);
+    if (!grantedScopes.includes("repo")) {
+      return redirect(req, { github: "error", message: "GitHub did not grant private-repository access. Re-authorize MAXXEN with repository access enabled." });
+    }
+
     const meResponse = await fetch("https://api.github.com/user", {
       headers: {
         Accept: "application/vnd.github+json",
