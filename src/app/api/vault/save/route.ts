@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Octokit } from "octokit";
 import { verifySession } from "@/lib/session";
-import { getLinkedGithubToken } from "@/lib/account-vault";
+import { getGithubTokenCookie } from "@/lib/github-token-cookie";
 import { SETTINGS_PATH, sealSecrets, sanitizePrefs, type StoredSettings } from "@/lib/vault";
 
 // Saves the calling USER's preferences + encrypted secrets to THEIR OWN
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const { session, githubToken, prefs, secrets, wipe } = await req.json();
     const email = verifySession(String(session || ""));
     if (!email) return NextResponse.json({ error: "Session expired. Log in again." }, { status: 401 });
-    const resolvedToken = typeof githubToken === "string" && githubToken.trim() ? githubToken.trim() : await getLinkedGithubToken(email);
+    const resolvedToken = typeof githubToken === "string" && githubToken.trim() ? githubToken.trim() : getGithubTokenCookie(req);
     if (!resolvedToken) return NextResponse.json({ error: "Connect GitHub to this MAXXEN account first." }, { status: 401 });
 
     const oct = new Octokit({ auth: resolvedToken });
