@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { linkGithubToken } from "@/lib/account-vault";
+import { setGithubTokenCookie } from "@/lib/github-token-cookie";
 import { verifySession } from "@/lib/session";
 import crypto from "node:crypto";
 
@@ -107,9 +107,8 @@ export async function GET(req: Request) {
       });
     }
 
-    await linkGithubToken(email, accessToken, true);
-
     const res = redirect(req, { github: "connected" });
+    setGithubTokenCookie(res, accessToken);
     res.cookies.delete(STATE_COOKIE);
     res.cookies.delete(SESSION_COOKIE);
     return res;
