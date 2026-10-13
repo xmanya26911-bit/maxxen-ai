@@ -569,7 +569,7 @@ export function SettingsForm({ view = "hub" }: { view?: SettingsView } = {}) {
                 </button>
               </div>
               <p id="set-key-hint" className="mt-1 text-[11px] text-white/35">
-                Stored only in this browser{provider === "custom" ? ", plus your encrypted vault on Save" : " and your encrypted vault on Save"} — never sent anywhere except your provider.
+                Stored only in this browser{provider === "custom" ? ", plus your encrypted vault on Save" : " and your encrypted vault on Save"} — relayed through this server to your provider on each request, never stored here.
               </p>
             </div>
             <div>

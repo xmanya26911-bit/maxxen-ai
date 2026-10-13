@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/session";
 
-// Validates the caller's session (HMAC-signed, 30-day expiry).
+// Validates the caller's session (HMAC-signed, 7-day expiry).
 // Body: { session }. Returns { ok, email } or 401.
 export async function POST(req: Request) {
   try {

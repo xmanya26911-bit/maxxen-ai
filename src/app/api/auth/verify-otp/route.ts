@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { otpStore, purgeExpired, OTP_TTL_MS, checkTicketRateLimit, recordTicketAttempt, isTicketUsed, markTicketUsed } from "@/lib/otp-store";
 import { checkTicket } from "@/lib/otp-crypto";
 import { signSession } from "@/lib/session";
@@ -41,7 +42,11 @@ export async function POST(req: Request) {
     otpStore.delete(key);
     return NextResponse.json({ error: "Too many attempts" }, { status: 429 });
   }
-  if (entry.code !== clean) {
+  // Constant-time compare (equal-length gate first, then timingSafeEqual).
+  const codeBuf = Buffer.from(clean);
+  const storedBuf = Buffer.from(entry.code);
+  const codeOk = codeBuf.length === storedBuf.length && crypto.timingSafeEqual(codeBuf, storedBuf);
+  if (!codeOk) {
     return NextResponse.json({ error: "Incorrect code — use the code from your newest email." }, { status: 401 });
   }
   return done();

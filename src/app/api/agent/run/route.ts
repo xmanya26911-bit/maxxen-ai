@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { assembleSystemPrompt, requireCapabilities, resolveEndpoint, resolvePolicy, type ResolvedEndpoint } from "@/lib/ai/request";
 import { sanitizeMessages } from "@/lib/context";
 import { budgetMessages, COMPACT_KEEP_RECENT, COMPACT_THRESHOLD_MESSAGES, summarizeHistory } from "@/lib/context/engine";
-import { toOpenAITools, type Ctx } from "@/lib/tools";
+import { toOpenAITools, centralPermissionGate, type Ctx } from "@/lib/tools";
 import { buildRuntime } from "@/lib/maxxen-runtime";
 import { createOpenAICompatClient, openaiAdapter } from "@/lib/ai/providers/openai";
 import { anthropicAdapter, resolveAnthropicModel } from "@/lib/ai/providers/anthropic";
@@ -404,7 +404,10 @@ export async function POST(req: Request) {
             send({ type: "tool.start", callId: call.id, tool: def.id });
             let res;
             try {
-              res = await def.run(args, ctx);
+              // Central permission backstop before any execution (see
+              // centralPermissionGate): deploy + destructive-external calls
+              // are refused here unless a human confirmed THIS tool id.
+              res = centralPermissionGate(def, args, ctx) ?? (await def.run(args, ctx));
             } catch (e: any) {
               res = { ok: false as const, summary: e?.message || "Tool crashed." };
             }

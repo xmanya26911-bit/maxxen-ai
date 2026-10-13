@@ -75,21 +75,35 @@ export function markTicketUsed(ticket: string, ttlMs: number) {
   }
 }
 
-// Simple per-email send-otp rate limit: 5 sends / 10 min per instance.
+// Send-otp rate limits: 5 sends / 10 min per email AND 10 sends / 10 min per
+// source IP (the IP budget blocks one address from mailing many inboxes).
+// Best-effort per-instance; a fully distributed limiter (Upstash/Vercel KV)
+// is still recommended for serverless production scale.
 const sg = globalThis as any;
 if (!sg.__maxxenSendLimits) sg.__maxxenSendLimits = new Map<string, { count: number; windowStart: number }>();
 export const sendLimits: Map<string, { count: number; windowStart: number }> = sg.__maxxenSendLimits;
 
-export function checkSendRateLimit(email: string): boolean {
+const SEND_WINDOW_MS = 10 * 60 * 1000;
+const MAX_SENDS_PER_EMAIL = 5;
+const MAX_SENDS_PER_IP = 10;
+
+function limitFor(key: string): number {
+  return key.startsWith("ip:") ? MAX_SENDS_PER_IP : MAX_SENDS_PER_EMAIL;
+}
+
+export function checkSendRateLimit(email: string, ip?: string): boolean {
   const now = Date.now();
-  const k = email.toLowerCase();
-  const cur = sendLimits.get(k);
-  const WINDOW = 10 * 60 * 1000;
-  if (!cur || now - cur.windowStart > WINDOW) {
-    sendLimits.set(k, { count: 1, windowStart: now });
-    return true;
+  const keys = [email.toLowerCase()];
+  if (ip) keys.push(`ip:${ip}`);
+  // Check every budget BEFORE consuming any of them (no partial spend).
+  for (const key of keys) {
+    const cur = sendLimits.get(key);
+    if (cur && now - cur.windowStart <= SEND_WINDOW_MS && cur.count >= limitFor(key)) return false;
   }
-  if (cur.count >= 5) return false;
-  cur.count++;
+  for (const key of keys) {
+    const cur = sendLimits.get(key);
+    if (!cur || now - cur.windowStart > SEND_WINDOW_MS) sendLimits.set(key, { count: 1, windowStart: now });
+    else cur.count++;
+  }
   return true;
 }

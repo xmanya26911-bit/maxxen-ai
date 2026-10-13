@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  // Framework default: double-invokes effects in dev to surface missing
+  // cleanup / refetch bugs. Dev-only — production builds are unaffected.
+  reactStrictMode: true,
 };
 
 export default nextConfig;

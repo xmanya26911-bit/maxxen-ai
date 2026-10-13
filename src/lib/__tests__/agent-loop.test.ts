@@ -186,8 +186,10 @@ describe("agent loop (golden path + authorization)", () => {
     h.script = [toolCallStep(), finalStep("Blocked.")];
     const events = await runAgent([{ role: "user", content: "please deploy" }]);
     expect(h.ctx?.confirmedTool).toBeUndefined();
-    // model-supplied `confirm` was stripped before the tool saw its args
-    expect(h.args).toEqual({ project: "p" });
+    // Central permission backstop (centralPermissionGate) refuses BEFORE the
+    // tool body runs — stronger than the old in-tool refusal. Arg stripping
+    // itself is asserted on the confirmed path below.
+    expect(h.args).toBeNull();
     const tr = events.find((e) => e.type === "tool.result") as { ok: boolean };
     expect(tr.ok).toBe(false);
     expect(events.some((e) => e.type === "permission.request")).toBe(true);

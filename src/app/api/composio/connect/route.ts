@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/composio";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // Composio connection check (API-key architecture — no OAuth/integration flow).
 // Frontend sends { toolkit?, composioKey }. Server validates the key against
 // Composio and reports reachable/failed with the REAL upstream reason.
 export async function POST(req: Request) {
   try {
-    const { composioKey, toolkit, params } = await req.json();
+    const body = await req.json();
+    if (SESSION_ENFORCED && !hasValidSession(req, body))
+      return NextResponse.json({ error: "Session required." }, { status: 401 });
+    const { composioKey, toolkit, params } = body ?? {};
     const key = cleanComposioKey(composioKey || process.env.COMPOSIO_API_KEY);
     if (!key) {
       return NextResponse.json({ error: "Missing Composio API key. Add in Settings > Plugins." }, { status: 400 });

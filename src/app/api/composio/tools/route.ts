@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/composio";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // Composio schema inventory: list executable tools, optionally filtered by
 // toolkit. Tolerates schema variety — only tools with a usable name are
@@ -7,7 +8,10 @@ import { cleanComposioKey, composioErrorDetail, composioHeaders } from "@/lib/co
 // Body: { composioKey, toolkit?, limit? }
 export async function POST(req: Request) {
   try {
-    const { composioKey: rawKey, toolkit, limit } = await req.json();
+    const body = await req.json();
+    if (SESSION_ENFORCED && !hasValidSession(req, body))
+      return NextResponse.json({ error: "Session required." }, { status: 401 });
+    const { composioKey: rawKey, toolkit, limit } = body ?? {};
     const composioKey = cleanComposioKey(rawKey);
     if (!composioKey) return NextResponse.json({ error: "Missing Composio API key. Add YOUR key on /plugins." }, { status: 400 });
     const n = Math.min(Math.max(Number(limit) || 100, 1), 200);

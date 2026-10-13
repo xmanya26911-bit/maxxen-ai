@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 /**
  * Auth session store — zustand + persist (localStorage key "maxxen-auth-v1").
  * The product keeps no server-side accounts: the session is the verified
- * email + the server-signed token (HMAC, 30-day expiry).
+ * email + the server-signed token (HMAC, 7-day expiry).
  *
  * Multi-account isolation: EVERYTHING user-scoped (chats, endpoint keys,
  * integration tokens) lives in per-email profiles
@@ -20,7 +20,7 @@ export interface AuthSession {
   verifiedAt: number;
   /** How the session was created (omitted in pre-Google persisted sessions). */
   provider?: AuthProvider;
-  /** Server-signed session token (HMAC, 30-day expiry). Empty for legacy stores. */
+  /** Server-signed session token (HMAC, 7-day expiry). Empty for legacy stores. */
   token?: string;
 }
 

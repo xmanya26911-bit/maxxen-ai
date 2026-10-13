@@ -13,14 +13,32 @@ export function serverSecret() {
   return "maxxen-dev-only";
 }
 
-// Sessions are HMAC-signed and carry their own expiry (default 30 days).
+// Sessions are HMAC-signed and carry their own expiry (default 7 days).
 // Format: base64url(email|exp|sig). Tamper-evident; verified server-side.
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// There is no server-side revocation list (stateless design), so the TTL is
+// the ONLY bound on a stolen token: keep it short. Full revocation (logout-
+// everywhere / password change) needs a persistent store and is future work.
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+let warnedWeakSecret = false;
+/** 7-day sessions make JWT-style "wait for expiry" attacks cheap; warn loudly
+ *  in production when signing with the Gmail fallback instead of OTP_SECRET. */
+function warnOnceIfWeakSecret(secret: string) {
+  if (warnedWeakSecret) return;
+  if (process.env.NODE_ENV === "production" && !process.env.OTP_SECRET && secret) {
+    warnedWeakSecret = true;
+    console.error(
+      "[maxxen] SECURITY: OTP_SECRET is unset — session HMAC is signing with the Gmail app password fallback. Set OTP_SECRET in the environment."
+    );
+  }
+}
 
 export function signSession(email: string, ttlMs = SESSION_TTL_MS) {
   const e = email.toLowerCase();
   const exp = Date.now() + ttlMs;
-  const sig = crypto.createHmac("sha256", serverSecret()).update(`${e}|${exp}`).digest("hex");
+  const secret = serverSecret();
+  warnOnceIfWeakSecret(secret);
+  const sig = crypto.createHmac("sha256", secret).update(`${e}|${exp}`).digest("hex");
   return Buffer.from(`${e}|${exp}|${sig}`).toString("base64url");
 }
 

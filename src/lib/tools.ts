@@ -6,11 +6,17 @@ import { assertSafeBaseURL } from "./net-guard";
 // local (credential-free helpers: time, search, page reading — always available).
 // Permissions gate destructive/visible effects BEFORE execution:
 // - read: always allowed
-// - write: allowlisted paths only (builds/, chats/, settings.json)
-// - deploy: requires explicit confirm:true (user gesture in UI)
+// - write: allowlisted paths only (builds/, chats/, settings.json); the
+//   user-visible write tools (create_repo, commit_file, open_pr, memory_save)
+//   additionally carry their own needsConfirm gate inside run()
+// - deploy: requires an explicit human confirm — enforced CENTRALLY by
+//   centralPermissionGate() at the agent-loop's single def.run() call site
+//   AND again inside the tool (defense in depth)
 // - external: composio actions run (user connected the toolkit themselves),
-//   but destructive-looking ones (send/delete/remove in the slug or args)
-//   require confirm:true too.
+//   but destructive-looking ones (send/delete/remove/... in slug or params)
+//   are refused by centralPermissionGate() unless confirmed, and again
+//   inside the tool.
+// Tests: src/lib/__tests__/permission-gates.test.ts locks these invariants.
 
 export type Permission = "read" | "write" | "deploy" | "external";
 // confirmedTool must come from an explicit human gesture (UI "Confirm" button →
@@ -23,11 +29,49 @@ export type ToolResult = { ok: boolean; summary: string; data?: unknown; error?:
 export type ToolDef = {
   id: string;
   kind: "project" | "deploy" | "composio" | "local";
+  /** Model-facing severity label, ENFORCED centrally (see centralPermissionGate). */
   permission: Permission;
   description: string;
   parameters: Record<string, unknown>; // JSON-schema-ish, human-readable
   run: (args: Record<string, unknown>, ctx: Ctx) => Promise<ToolResult>;
 };
+
+// Same verb scan composio_execute uses internally — kept here so the central
+// gate and the tool can never disagree about what "destructive" means.
+const DESTRUCTIVE_RE = /send|delete|remove|create|update|publish|post|forward|reply|archive|share|invite|trash/i;
+
+/**
+ * Central permission backstop, called from the agent loop at its single
+ * def.run() call site BEFORE any tool executes. Returns a ToolResult to
+ * short-circuit (no execution), or null to let the tool run.
+ *
+ * - "deploy" tools never run without ctx.confirmedTool === def.id.
+ * - "external" (Composio) tools are refused when the slug/params look
+ *   destructive and the human hasn't confirmed this exact tool.
+ * - "read"/"write" tools pass through: write safety is the path allowlist
+ *   (enforced per tool) plus their own optional confirm gates.
+ *
+ * ctx.confirmedTool originates ONLY from an explicit human gesture
+ * ("Confirmed: <tool>" user message), never from model-supplied args.
+ */
+export function centralPermissionGate(def: ToolDef, args: Record<string, unknown>, ctx: Ctx): ToolResult | null {
+  if (ctx.confirmedTool === def.id) return null;
+  if (def.permission === "deploy") {
+    return { ok: false, summary: `${def.id} needs explicit confirmation.`, needsConfirm: true };
+  }
+  if (def.permission === "external") {
+    const slug = typeof args.tool === "string" ? args.tool : "";
+    const hay = `${slug} ${JSON.stringify(args.params ?? {})}`;
+    if (DESTRUCTIVE_RE.test(hay)) {
+      return {
+        ok: false,
+        summary: `“${slug || "that action"}” changes the outside world — confirm explicitly first.`,
+        needsConfirm: true,
+      };
+    }
+  }
+  return null;
+}
 
 const need = (v: unknown, what: string): string => {
   if (typeof v !== "string" || !v.trim()) throw new Error(what);

@@ -4,6 +4,7 @@ import {
   composioErrorDetail,
   executeComposioTool,
 } from "@/lib/composio";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // REAL Composio tool execution (previously this only listed accounts).
 // Body: { composioKey, tool, action?, params?, connectedAccountId? }
@@ -16,6 +17,8 @@ import {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    if (SESSION_ENFORCED && !hasValidSession(req, body))
+      return NextResponse.json({ error: "Session required." }, { status: 401 });
     const composioKey = cleanComposioKey(body?.composioKey);
     const slug = body?.tool || body?.action;
     const args = body?.params ?? body?.arguments ?? {};

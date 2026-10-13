@@ -25,6 +25,11 @@ export function assertSafeBaseURL(raw: unknown, fallback: string): string {
   for (const suf of BAD_SUFFIXES) {
     if (host === suf.slice(1) || host.endsWith(suf)) throw new Error("Base URL host is not allowed.");
   }
+  // Port lockdown (AFTER host checks so bad hosts keep their "not allowed"
+  // error): a public hostname can expose an internal admin service on an
+  // unusual port (e.g. https://host:9200). Only default https is allowed;
+  // the URL normalizer already erases an explicit :443.
+  if (u.port && u.port !== "443") throw new Error("Base URL must use the default https port (443).");
   // IPv4 literal: validate now, skip DNS TLD checks.
   const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (v4) {

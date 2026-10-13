@@ -10,7 +10,12 @@ export async function POST(req: Request) {
     if (!normalized || !/^\S+@\S+\.\S+$/.test(normalized) || normalized.length > 254)
       return NextResponse.json({ error: "Valid email required" }, { status: 400 });
     const { checkSendRateLimit } = await import("@/lib/otp-store");
-    if (!checkSendRateLimit(normalized)) {
+    // Per-IP budget (x-real-ip on Vercel/Next, first x-forwarded-for hop else).
+    const ip =
+      req.headers.get("x-real-ip")?.trim() ||
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      undefined;
+    if (!checkSendRateLimit(normalized, ip)) {
       return NextResponse.json({ error: "Too many codes sent — wait 10 minutes and try again." }, { status: 429 });
     }
     const code = makeCode();
@@ -18,18 +23,21 @@ export async function POST(req: Request) {
       await sendOtpMail(normalized, code);
     } catch (e: any) {
       const raw = e.message ?? "";
+      // Server-side only: upstream SMTP errors can contain account details.
+      console.error("[maxxen] otp send failed:", raw);
       if (/535|authentication unsuccessful/i.test(raw))
         return NextResponse.json(
           { error: "Gmail blocked the login. Fix: use a Google App Password in GMAIL_APP_PASSWORD (not your normal password) with 2-Step Verification on." },
           { status: 500 }
         );
-      return NextResponse.json({ error: raw || "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD." }, { status: 500 });
+      return NextResponse.json({ error: "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD on the server." }, { status: 500 });
     }
     purgeExpired(); // drop anything older than 10 min before storing
     otpStore.set(normalized, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
     // Stateless ticket so verify works on any serverless instance.
     return NextResponse.json({ ok: true, message: "OTP sent", ticket: issueTicket(normalized, code) });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message ?? "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD." }, { status: 500 });
+    console.error("[maxxen] send-otp failed:", e?.message ?? e);
+    return NextResponse.json({ error: "Send failed. Check GMAIL_EMAIL/GMAIL_APP_PASSWORD on the server." }, { status: 500 });
   }
 }

@@ -22,6 +22,14 @@ describe("assertSafeBaseURL (SSRF guard)", () => {
     expect(() => assertSafeBaseURL("https://user:pass@api.openai.com", "x")).toThrow();
   });
 
+  it("rejects non-default ports but accepts explicit :443", () => {
+    expect(() => assertSafeBaseURL("https://api.openai.com:8443/v1", "x")).toThrow();
+    expect(() => assertSafeBaseURL("https://host.example.com:9200", "x")).toThrow();
+    expect(() => assertSafeBaseURL("https://host.example.com:3000", "x")).toThrow();
+    // :443 is the default and normalizes away
+    expect(assertSafeBaseURL("https://api.openai.com:443/v1", "x")).toBe("https://api.openai.com/v1");
+  });
+
   it("rejects localhost and cloud metadata hosts", () => {
     for (const h of [
       "https://localhost",

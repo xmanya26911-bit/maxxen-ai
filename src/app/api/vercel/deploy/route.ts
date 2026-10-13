@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // REAL Vercel deployment (previously this only verified the project exists).
 // Body: { vercelToken, projectName, files: [{ file, data }], target? }
@@ -11,7 +12,10 @@ const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
   try {
-    const { vercelToken, projectName, files, target } = await req.json();
+    const body = await req.json();
+    if (SESSION_ENFORCED && !hasValidSession(req, body))
+      return NextResponse.json({ error: "Session required." }, { status: 401 });
+    const { vercelToken, projectName, files, target } = body ?? {};
     if (!vercelToken || typeof vercelToken !== "string")
       return NextResponse.json({ error: "vercelToken required — YOUR token (Settings → Hosting)." }, { status: 400 });
     if (!projectName || typeof projectName !== "string")

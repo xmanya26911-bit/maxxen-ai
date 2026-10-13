@@ -37,7 +37,7 @@ describe("sessions (HMAC, self-expiring)", () => {
     expect(verifySession("a|b|c|d")).toBeNull();
   });
 
-  it("exposes the 30-day default TTL", () => {
-    expect(SESSION_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
+  it("exposes the 7-day default TTL", () => {
+    expect(SESSION_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
 });

@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+import { SESSION_ENFORCED, hasValidSession } from "@/lib/security/guard";
 
 // Deployment status on the USER's own Vercel account.
 // Body: { vercelToken, deploymentId } → { id, state, url }.
 // States: QUEUED, INITIALIZING, BUILDING, READY, ERROR, CANCELED.
 export async function POST(req: Request) {
   try {
-    const { vercelToken, deploymentId } = await req.json();
+    const body = await req.json();
+    if (SESSION_ENFORCED && !hasValidSession(req, body))
+      return NextResponse.json({ error: "Session required." }, { status: 401 });
+    const { vercelToken, deploymentId } = body ?? {};
     if (!vercelToken) return NextResponse.json({ error: "vercelToken required — YOUR token." }, { status: 400 });
     if (!deploymentId || typeof deploymentId !== "string")
       return NextResponse.json({ error: "deploymentId required." }, { status: 400 });
